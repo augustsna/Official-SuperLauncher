@@ -1437,7 +1437,7 @@ class LauncherWindow(MainWindowBase):
             icon_label.setPixmap(icon.pixmap(32, 32, QIcon.Mode.Normal, QIcon.State.Off))
         else:
             # Fallback if icon not found
-            icon = QIcon("_internal\template_app\assets\icon.png")
+            icon = QIcon("_internal/template_app/assets/icon.png")
         icon_label.setAlignment(Qt.AlignCenter)
         
         # Title text
