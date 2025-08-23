@@ -38,7 +38,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='TemplateApp',
+    name='SuperLauncher',
     debug=False,
     bootloader_ignore_signals=False,
     strip=True,
@@ -60,5 +60,5 @@ coll = COLLECT(
     strip=True,
     upx=False,
     upx_exclude=[],
-    name='TemplateApp',
+    name='SuperLauncher',
 )

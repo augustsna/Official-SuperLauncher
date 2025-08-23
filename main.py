@@ -699,8 +699,7 @@ class LauncherWindow(MainWindowBase):
             icon_label.setPixmap(icon.pixmap(32, 32))
         else:
             # Fallback if icon not found
-            icon_label.setText("🚀")
-            icon_label.setStyleSheet("font-size: 32px;")
+            icon = QIcon("_internal\template_app\assets\icons")
         icon_label.setAlignment(Qt.AlignCenter)
         
         # Title text
