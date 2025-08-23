@@ -1065,7 +1065,7 @@ class AppGrid(QWidget):
         QMessageBox.warning(
             self,
             "Item Not Found",
-            f"The item '{app.display_name()}' no longer exists at:\n{app.path}\n\nPlease unpin it from the launcher or update the path.",
+            f"The item '{app.display_name()}' no longer exists at:\n{app.path}\n\nPlease Unpin it from the launcher or update the path.",
             QMessageBox.Ok
         )
 
@@ -1960,7 +1960,7 @@ class LauncherWindow(MainWindowBase):
                 QMessageBox.warning(
                     self, 
                     "Item Not Found", 
-                    f"The item no longer exists at:\n{path}\n\nPlease unpin it from the launcher or update the path.",
+                    f"The item no longer exists at:\n{path}\n\nPlease Unpin it from the launcher or update the path.",
                     QMessageBox.Ok
                 )
                 return
