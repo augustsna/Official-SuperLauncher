@@ -685,6 +685,25 @@ class LauncherWindow(MainWindowBase):
     def _build_launcher_ui(self):
         """Build the launcher-specific user interface."""
         # Header: Title and search
+        # Create title container with icon and text
+        title_container = QWidget()
+        title_layout = QHBoxLayout(title_container)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(0)
+        title_layout.setAlignment(Qt.AlignCenter)
+        
+        # Add rocket icon
+        icon_label = QLabel()
+        icon = QIcon("template_app/assets/icons/icon.png")
+        if not icon.isNull():
+            icon_label.setPixmap(icon.pixmap(32, 32))
+        else:
+            # Fallback if icon not found
+            icon_label.setText("🚀")
+            icon_label.setStyleSheet("font-size: 32px;")
+        icon_label.setAlignment(Qt.AlignCenter)
+        
+        # Title text
         title_label = QLabel(APP_NAME)
         title_label.setStyleSheet("""
             QLabel {
@@ -696,6 +715,10 @@ class LauncherWindow(MainWindowBase):
             }
         """)
         title_label.setAlignment(Qt.AlignCenter)
+        
+        # Add icon and title to layout
+        title_layout.addWidget(icon_label)
+        title_layout.addWidget(title_label)
         
         self.filter_edit = QLineEdit()
         self.filter_edit.setFixedHeight(30)
@@ -719,7 +742,7 @@ class LauncherWindow(MainWindowBase):
         header_content_layout.setSpacing(10)
         
         # Add title and search box vertically
-        header_content_layout.addWidget(title_label)
+        header_content_layout.addWidget(title_container)
         #header_content_layout.addWidget(self.filter_edit, alignment=Qt.AlignCenter)
         
         # Add the header content to the main header layout
@@ -765,43 +788,51 @@ class LauncherWindow(MainWindowBase):
         # Control buttons area
         controls_widget = QWidget()
         controls_layout = QHBoxLayout(controls_widget)
-        controls_layout.setContentsMargins(0, 10, 0, 0)
+        controls_layout.setContentsMargins(0, 0, 10, 0)
         
-        self.btn_add = QPushButton("Add Apps")
+        self.btn_add = QPushButton("Add")
+        self.btn_add.setFixedWidth(80)
+        self.btn_add.setFixedHeight(35)
         self.btn_add.clicked.connect(self.on_add)
         self.btn_add.setStyleSheet("""
             QPushButton {
-                background-color: #0078d4;
-                color: white;
-                border: none;
-                padding: 10px 20px;
+                background-color: white;
+                color: #333333;
+                border: 1px solid #ddd;
+                padding: 4px;
                 border-radius: 6px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #106ebe;
+                background-color: #f8f9fa;
+                border-color: #adb5bd;
             }
             QPushButton:pressed {
-                background-color: #005a9e;
+                background-color: #e9ecef;
+                border-color: #6c757d;
             }
         """)
         
-        self.btn_run = QPushButton("Run Selected")
+        self.btn_run = QPushButton("Run")
         self.btn_run.clicked.connect(self.on_run_selected)
+        self.btn_run.setFixedWidth(80)
+        self.btn_run.setFixedHeight(35)
         self.btn_run.setStyleSheet("""
             QPushButton {
-                background-color: #107c10;
-                color: white;
-                border: none;
-                padding: 10px 20px;
+                background-color: white;
+                color: #333333;
+                border: 1px solid #ddd;
+                padding: 4px;
                 border-radius: 6px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #0e6b0e;
+                background-color: #f8f9fa;
+                border-color: #adb5bd;
             }
             QPushButton:pressed {
-                background-color: #0c5a0c;
+                background-color: #e9ecef;
+                border-color: #6c757d;
             }
         """)
         
@@ -826,13 +857,14 @@ class LauncherWindow(MainWindowBase):
         
         controls_layout.addStretch()
         controls_layout.addWidget(self.btn_add)
+        controls_layout.addSpacing(5)
         controls_layout.addWidget(self.btn_run)
-        controls_layout.addWidget(self.btn_more)
+        #controls_layout.addWidget(self.btn_more)
         
         # Add to splitter
         splitter.addWidget(self.app_grid)
         splitter.addWidget(controls_widget)
-        splitter.setSizes([400, 100])  # Give more space to app grid
+        splitter.setSizes([400, 50])  # Give more space to app grid
         
         # Add splitter to body layout
         self.body_layout.addWidget(splitter)

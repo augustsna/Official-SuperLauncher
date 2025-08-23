@@ -18,7 +18,7 @@ def clean_build():
 
     main_build_dirs = [
         'build/main',
-        'dist/TemplateApp'
+        'dist/SuperLauncher'
     ]
 
     for dir_path in main_build_dirs:
@@ -42,12 +42,12 @@ def get_version_info():
     """Get version information for the executable"""
     return {
         'version': '1.0.0.0',
-        'company_name': 'Your Company Name',
-        'file_description': 'PySide6 Template App',
-        'internal_name': 'TemplateApp',
-        'legal_copyright': f"Copyright © {datetime.now().year} Your Company Name",
-        'original_filename': 'TemplateApp.exe',
-        'product_name': 'Template App',
+        'company_name': 'SuperLauncher',
+        'file_description': 'SuperLauncher - Windows Application Launcher',
+        'internal_name': 'SuperLauncher',
+        'legal_copyright': f"Copyright © {datetime.now().year} SuperLauncher",
+        'original_filename': 'SuperLauncher.exe',
+        'product_name': 'SuperLauncher',
         'product_version': '1.0.0.0'
     }
 
@@ -96,7 +96,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='TemplateApp',
+    name='SuperLauncher',
     debug=False,
     bootloader_ignore_signals=False,
     strip=True,
@@ -118,7 +118,7 @@ coll = COLLECT(
     strip=True,
     upx=False,
     upx_exclude=[],
-    name='TemplateApp',
+    name='SuperLauncher',
 )
 '''
 
@@ -168,8 +168,8 @@ VSVersionInfo(
 
 
 def build_main():
-    """Build the main executable with anti-virus optimizations"""
-    print("[BUILD] Building TemplateApp...")
+    """Build the SuperLauncher executable with anti-virus optimizations"""
+    print("[BUILD] Building SuperLauncher...")
 
     env = os.environ.copy()
     env['PYTHONHASHSEED'] = '0'
@@ -197,7 +197,7 @@ def post_build_optimizations():
     """Apply post-build optimizations to reduce false positives"""
     print("[OPT] Applying post-build optimizations...")
 
-    exe_path = 'dist/TemplateApp/TemplateApp.exe'
+    exe_path = 'dist/SuperLauncher/SuperLauncher.exe'
     if os.path.exists(exe_path):
         print("   [OK] Executable created successfully")
         print("   [SIZE] File size:", f"{os.path.getsize(exe_path) / (1024*1024):.2f} MB")
@@ -237,7 +237,7 @@ def check_dependencies():
 def main():
     """Main build process with anti-virus optimizations"""
     print("=" * 60)
-    print("  PySide6 Main App Builder (Anti-Virus Optimized)")
+    print("  SuperLauncher Builder (Anti-Virus Optimized)")
     print("=" * 60)
     print()
 
@@ -256,7 +256,7 @@ def main():
         print("=" * 60)
         print("[OK] Main build successful")
         print("\nGenerated files:")
-        print("   - dist/TemplateApp/ - application build")
+        print("   - dist/SuperLauncher/ - application build")
         print("\n[AV] Anti-virus optimizations applied:")
         print("   - Clean imports and exclusions")
         print("   - Disabled UPX compression")
