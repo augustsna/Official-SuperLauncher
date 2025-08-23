@@ -211,9 +211,12 @@ class AppGrid(QWidget):
         
         # Create content widget for the grid
         self.content_widget = QWidget()
+        self.content_widget.setStyleSheet("background-color: #f5f7fa;")
         self.grid_layout = QGridLayout(self.content_widget)
         self.grid_layout.setSpacing(15)
         self.grid_layout.setContentsMargins(20, 20, 20, 20)
+        # Ensure items start from top-left corner
+        self.grid_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         
         # Set the content widget in the scroll area
         self.scroll_area.setWidget(self.content_widget)
@@ -222,6 +225,8 @@ class AppGrid(QWidget):
         layout = QVBoxLayout(self)
         layout.addWidget(self.scroll_area)
         layout.setContentsMargins(0, 0, 0, 0)
+        # Ensure the scroll area content starts from top-left
+        layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         
         # Connect double-click and context menu
         self.content_widget.mousePressEvent = self._handle_mouse_press
@@ -297,7 +302,7 @@ class AppGrid(QWidget):
         text_label.setWordWrap(True)
         text_label.setStyleSheet("""
             QLabel {
-                color: white;
+                color: #2d3748;
                 background: transparent;
                 border: none;
                 font-size: 11px;
@@ -313,6 +318,8 @@ class AppGrid(QWidget):
         # Connect mouse events
         widget.mousePressEvent = lambda event, w=widget: self._on_app_clicked(event, w)
         widget.mouseDoubleClickEvent = lambda event, w=widget: self._on_app_double_clicked(event, w)
+        widget.enterEvent = lambda event, w=widget: self._on_app_hover_enter(event, w)
+        widget.leaveEvent = lambda event, w=widget: self._on_app_hover_leave(event, w)
         
         return widget
 
@@ -322,9 +329,10 @@ class AppGrid(QWidget):
             self._last_clicked_app = widget.app_data
             # Highlight the clicked widget
             self._clear_highlights()
+            widget._is_clicked = True
             widget.setStyleSheet("""
                 QWidget {
-                    background-color: rgba(255, 255, 255, 0.1);
+                    background-color: rgba(45, 55, 72, 0.1);
                     border-radius: 8px;
                 }
             """)
@@ -333,6 +341,22 @@ class AppGrid(QWidget):
         """Handle double click on app widget."""
         if event.button() == Qt.LeftButton:
             self._run_app(widget.app_data)
+
+    def _on_app_hover_enter(self, event, widget):
+        """Handle mouse enter on app widget."""
+        if not hasattr(widget, '_is_clicked') or not widget._is_clicked:
+            widget.setStyleSheet("""
+                QWidget {
+                    background-color: rgba(45, 55, 72, 0.05);
+                    border-radius: 8px;
+                    border: 1px solid rgba(45, 55, 72, 0.2);
+                }
+            """)
+
+    def _on_app_hover_leave(self, event, widget):
+        """Handle mouse leave on app widget."""
+        if not hasattr(widget, '_is_clicked') or not widget._is_clicked:
+            widget.setStyleSheet("")
 
     def _handle_mouse_press(self, event):
         """Handle mouse press on the scroll area."""
@@ -376,6 +400,8 @@ class AppGrid(QWidget):
         """Clear all widget highlights."""
         for widget in self.app_widgets:
             widget.setStyleSheet("")
+            if hasattr(widget, '_is_clicked'):
+                widget._is_clicked = False
 
     def _run_app(self, app: AppItem):
         """Run an application."""
@@ -514,24 +540,24 @@ class LauncherWindow(MainWindowBase):
         self.app_grid.populate(self.apps)
         # Don't connect context menu here - AppGrid handles it internally
         
-        # Style the scroll area to match the dark theme
+        # Style the scroll area to match the light theme
         self.app_grid.scroll_area.setStyleSheet("""
             QScrollArea {
-                background-color: transparent;
+                background-color: #f5f7fa;
                 border: none;
             }
             QScrollBar:vertical {
-                background-color: #2d2d2d;
+                background-color: #e1e5e9;
                 width: 12px;
                 border-radius: 6px;
             }
             QScrollBar::handle:vertical {
-                background-color: #555555;
+                background-color: #b8c0c8;
                 border-radius: 6px;
                 min-height: 20px;
             }
             QScrollBar::handle:vertical:hover {
-                background-color: #777777;
+                background-color: #9aa3ad;
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0px;

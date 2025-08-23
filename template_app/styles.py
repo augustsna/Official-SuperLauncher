@@ -6,7 +6,7 @@ QWidget {
     font-family: 'Segoe UI', Arial, sans-serif;
     font-size: 12px;
     color: #333333;
-    background-color: #202020;
+    background-color: #f5f7fa;
 }
 
 QGroupBox {
