@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, QSize, QFileInfo, QMimeData
-from PySide6.QtGui import QIcon, QPixmap, QKeySequence, QShortcut, QDrag
+from PySide6.QtGui import QIcon, QPixmap, QKeySequence, QShortcut, QDrag, QColor
 from PySide6.QtWidgets import (
     QApplication, QFileIconProvider, QGridLayout, QHBoxLayout, QInputDialog,
     QLabel, QLineEdit, QMenu, QMessageBox,
@@ -1436,8 +1436,26 @@ class LauncherWindow(MainWindowBase):
             # Use high-quality scaling for the header icon
             icon_label.setPixmap(icon.pixmap(32, 32, QIcon.Mode.Normal, QIcon.State.Off))
         else:
-            # Fallback if icon not found
-            icon = QIcon("_internal/template_app/assets/icon.png")
+            # Fallback if icon not found - try alternative paths
+            fallback_paths = [
+                "template_app/assets/icons/icon.png",
+                "template_app/assets/icon.png",
+                "assets/icons/icon.png"
+            ]
+            
+            icon = QIcon()
+            for path in fallback_paths:
+                icon = QIcon(path)
+                if not icon.isNull():
+                    break
+            
+            # If still no icon found, create a default placeholder
+            if icon.isNull():
+                # Create a simple colored square as placeholder
+                pixmap = QPixmap(32, 32)
+                pixmap.fill(QColor(100, 150, 200))  # Nice blue color
+                icon = QIcon(pixmap)
+        
         icon_label.setAlignment(Qt.AlignCenter)
         
         # Title text

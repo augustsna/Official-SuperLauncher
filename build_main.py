@@ -193,6 +193,28 @@ def build_main():
         return False
 
 
+def copy_icon_to_output():
+    """Copy the icon file to the output folder"""
+    print("[COPY] Copying icon to output folder...")
+    
+    source_icon = 'template_app/assets/icons/icon.png'
+    output_dir = 'dist/SuperLauncher/template_app/assets/icons'
+    target_icon = os.path.join(output_dir, 'icon.png')
+    
+    if os.path.exists(source_icon):
+        try:
+            # Ensure output directory exists
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Copy the icon file
+            shutil.copy2(source_icon, target_icon)
+            print(f"   [OK] Icon copied to {target_icon}")
+        except Exception as e:
+            print(f"   [WARN] Failed to copy icon: {e}")
+    else:
+        print(f"   [WARN] Source icon not found: {source_icon}")
+
+
 def post_build_optimizations():
     """Apply post-build optimizations to reduce false positives"""
     print("[OPT] Applying post-build optimizations...")
@@ -250,6 +272,7 @@ def main():
     create_main_spec()
 
     if build_main():
+        copy_icon_to_output()
         post_build_optimizations()
         print("\n" + "=" * 60)
         print("  BUILD SUMMARY")
@@ -257,6 +280,7 @@ def main():
         print("[OK] Main build successful")
         print("\nGenerated files:")
         print("   - dist/SuperLauncher/ - application build")
+        print("   - dist/SuperLauncher/template_app/assets/icons/icon.png - application icon")
         print("\n[AV] Anti-virus optimizations applied:")
         print("   - Clean imports and exclusions")
         print("   - Disabled UPX compression")
