@@ -83,6 +83,59 @@ QComboBox QAbstractItemView {
     outline: none;
 }
 
+/* Dark Context Menu Styles */
+QMenu {
+    background-color: #2d3748;
+    color: #e2e8f0;
+    border: 1px solid #4a5568;
+    border-radius: 6px;
+    padding: 4px 0px;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 12px;
+}
+
+QMenu::item {
+    background-color: transparent;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 0px;
+}
+
+QMenu::item:selected {
+    background-color: #4a5568;
+    color: #ffffff;
+}
+
+QMenu::item:pressed {
+    background-color: #2d3748;
+    color: #e2e8f0;
+}
+
+QMenu::separator {
+    height: 1px;
+    background-color: #4a5568;
+    margin: 4px 8px;
+}
+
+QMenu::indicator {
+    width: 16px;
+    height: 16px;
+}
+
+QMenu::indicator:non-exclusive:unchecked {
+    image: none;
+    border: 1px solid #718096;
+    background-color: #2d3748;
+    border-radius: 3px;
+}
+
+QMenu::indicator:non-exclusive:checked {
+    image: none;
+    border: 1px solid #3182ce;
+    background-color: #3182ce;
+    border-radius: 3px;
+}
+
 QCheckBox {
     spacing: 8px;
     font-size: 13px;

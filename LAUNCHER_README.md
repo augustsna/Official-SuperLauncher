@@ -48,10 +48,11 @@ A powerful, modern application launcher built with PySide6 that integrates seaml
    python main.py
    ```
 
-2. **Add Applications**:
-   - Click "Add Apps" button
-   - Navigate to and select applications
-   - Applications are automatically pinned with proper icons
+2. **Add Applications and Folders**:
+   - Click "Add Apps" button to choose between files or folders
+   - Select "Add Files..." to pin individual applications and files
+   - Select "Add Folder..." to pin entire folders for quick access
+   - Items are automatically pinned with proper icons
 
 3. **Search and Launch**:
    - Use the search bar to filter your pinned items
@@ -65,8 +66,8 @@ A powerful, modern application launcher built with PySide6 that integrates seaml
 ### Advanced Features
 
 #### Context Menu (Right-click)
-- **Run**: Launch normally
-- **Run as administrator**: Launch with elevated privileges
+- **Run/Open Folder**: Launch applications or open folders
+- **Run as administrator**: Launch with elevated privileges (files only)
 - **Open location**: Open the folder containing the item
 - **Rename**: Customize the display name
 - **Unpin**: Remove from launcher

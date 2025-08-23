@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from PySide6.QtCore import Qt, QSize, QFileInfo
-from PySide6.QtGui import QIcon, QPixmap, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, QSize, QFileInfo, QMimeData
+from PySide6.QtGui import QIcon, QPixmap, QKeySequence, QShortcut, QDrag
 from PySide6.QtWidgets import (
     QApplication, QFileIconProvider, QGridLayout, QHBoxLayout, QInputDialog,
     QLabel, QLineEdit, QMenu, QMessageBox,
@@ -112,11 +112,15 @@ class IconExtractor:
     
     @staticmethod
     def _get_default_icon(file_path: str) -> QIcon:
-        """Get default icon based on file extension."""
+        """Get default icon based on file extension or type."""
         try:
             app = QApplication.instance()
             if not app:
                 return QIcon()
+            
+            # Check if it's a directory first
+            if os.path.isdir(file_path):
+                return app.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon)
             
             ext = Path(file_path).suffix.lower()
             
@@ -156,6 +160,11 @@ class AppItem:
     def display_name(self) -> str:
         if self.title and self.title.strip():
             return self.title
+        
+        # Check if it's a directory
+        if os.path.isdir(self.path):
+            return Path(self.path).name  # Use name() for folders to keep the full folder name
+        
         return Path(self.path).stem
 
 
@@ -201,7 +210,7 @@ class AppGrid(QWidget):
         super().__init__(parent)
         self.apps: List[AppItem] = []
         self.app_widgets: List[QWidget] = []
-        self.columns = 6  # Default number of columns
+        self.columns = 5  # Default number of columns
         
         # Create scroll area for the grid
         self.scroll_area = QScrollArea()
@@ -272,8 +281,10 @@ class AppGrid(QWidget):
     def _create_app_widget(self, app: AppItem) -> QWidget:
         """Create a widget for a single app item."""
         widget = QWidget()
-        widget.setFixedSize(80, 100)  # Fixed size for consistent grid
+        widget.setFixedSize(100, 100)  # Square size for consistent grid
         widget.setCursor(Qt.PointingHandCursor)
+        # Enable drag and drop
+        widget.setAcceptDrops(True)
         
         # Store app data
         widget.app_data = app
@@ -316,10 +327,15 @@ class AppGrid(QWidget):
         layout.addWidget(text_label)
         
         # Connect mouse events
-        widget.mousePressEvent = lambda event, w=widget: self._on_app_clicked(event, w)
+        widget.mousePressEvent = lambda event, w=widget: self._on_app_mouse_press(event, w)
+        widget.mouseMoveEvent = lambda event, w=widget: self._on_app_mouse_move(event, w)
         widget.mouseDoubleClickEvent = lambda event, w=widget: self._on_app_double_clicked(event, w)
         widget.enterEvent = lambda event, w=widget: self._on_app_hover_enter(event, w)
         widget.leaveEvent = lambda event, w=widget: self._on_app_hover_leave(event, w)
+        # Add drag and drop event handlers
+        widget.dragEnterEvent = lambda event, w=widget: self._on_app_drag_enter(event, w)
+        widget.dragLeaveEvent = lambda event, w=widget: self._on_app_drag_leave(event, w)
+        widget.dropEvent = lambda event, w=widget: self._on_app_drop(event, w)
         
         return widget
 
@@ -358,6 +374,114 @@ class AppGrid(QWidget):
         if not hasattr(widget, '_is_clicked') or not widget._is_clicked:
             widget.setStyleSheet("")
 
+    def _on_app_mouse_press(self, event, widget):
+        """Handle mouse press on app widget - handles both click and drag start."""
+        if event.button() == Qt.LeftButton:
+            # Store the widget for potential drag operation
+            self._drag_start_widget = widget
+            self._drag_start_pos = event.position().toPoint()
+            # Handle click
+            self._on_app_clicked(event, widget)
+
+    def _on_app_clicked(self, event, widget):
+        """Handle single click on app widget."""
+        self._last_clicked_app = widget.app_data
+        # Highlight the clicked widget
+        self._clear_highlights()
+        widget._is_clicked = True
+        widget.setStyleSheet("""
+            QWidget {
+                background-color: rgba(45, 55, 72, 0.1);
+                border-radius: 8px;
+            }
+        """)
+
+    def _on_app_mouse_move(self, event, widget):
+        """Handle mouse move to start drag operation."""
+        if (hasattr(self, '_drag_start_widget') and 
+            self._drag_start_widget == widget and
+            hasattr(self, '_drag_start_pos') and
+            (event.position().toPoint() - self._drag_start_pos).manhattanLength() > 10):
+            
+            # Start drag operation
+            self._start_drag(widget, event)
+
+    def _start_drag(self, widget, event):
+        """Start drag operation for the widget."""
+        drag = QDrag(widget)
+        mime_data = QMimeData()
+        mime_data.setText(str(self.app_widgets.index(widget)))
+        drag.setMimeData(mime_data)
+        
+        # Create drag pixmap
+        pixmap = widget.grab()
+        drag.setPixmap(pixmap)
+        drag.setHotSpot(event.position().toPoint())
+        
+        # Execute drag
+        result = drag.exec(Qt.MoveAction)
+        
+        # Clean up
+        if hasattr(self, '_drag_start_widget'):
+            delattr(self, '_drag_start_widget')
+        if hasattr(self, '_drag_start_pos'):
+            delattr(self, '_drag_start_pos')
+
+    def _on_app_drag_enter(self, event, widget):
+        """Handle drag enter event."""
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+            # Highlight drop target
+            widget.setStyleSheet("""
+                QWidget {
+                    background-color: rgba(45, 55, 72, 0.15);
+                    border-radius: 8px;
+                    border: 2px dashed rgba(45, 55, 72, 0.4);
+                }
+            """)
+
+    def _on_app_drag_leave(self, event, widget):
+        """Handle drag leave event."""
+        # Clear the drop highlight
+        if not hasattr(widget, '_is_clicked') or not widget._is_clicked:
+            widget.setStyleSheet("")
+        else:
+            # Restore clicked state styling
+            widget.setStyleSheet("""
+                QWidget {
+                    background-color: rgba(45, 55, 72, 0.1);
+                    border-radius: 8px;
+                }
+            """)
+
+    def _on_app_drop(self, event, widget):
+        """Handle drop event to rearrange items."""
+        if event.mimeData().hasText():
+            try:
+                source_index = int(event.mimeData().text())
+                target_index = self.app_widgets.index(widget)
+                
+                if source_index != target_index:
+                    # Rearrange the apps list
+                    app_item = self.apps.pop(source_index)
+                    self.apps.insert(target_index, app_item)
+                    
+                    # Update the grid
+                    self.populate(self.apps)
+                    
+                    # Save the new order
+                    main_window = self._find_main_window()
+                    if main_window and hasattr(main_window, 'config'):
+                        main_window.config.save_apps(self.apps)
+                    
+                    # Clear the highlight
+                    widget.setStyleSheet("")
+                    
+            except (ValueError, IndexError):
+                pass
+            
+            event.acceptProposedAction()
+
     def _handle_mouse_press(self, event):
         """Handle mouse press on the scroll area."""
         if event.button() == Qt.LeftButton:
@@ -377,24 +501,77 @@ class AppGrid(QWidget):
     def _show_context_menu(self, app: AppItem, global_pos):
         """Show context menu for an app."""
         menu = QMenu(self)
-        run_action = menu.addAction("Run")
-        run_admin_action = menu.addAction("Run as administrator")
-        open_loc_action = menu.addAction("Open location")
+        
+        # Apply dark context menu styling
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #2d3748;
+                color: #e2e8f0;
+                border: 1px solid #4a5568;
+                border-radius: 0px;
+                padding: 4px 0px;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                font-size: 12px;
+            }
+            QMenu::item {
+                background-color: transparent;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 0px;
+            }
+            QMenu::item:selected {
+                background-color: #4a5568;
+                color: #ffffff;
+            }
+            QMenu::item:pressed {
+                background-color: #2d3748;
+                color: #e2e8f0;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #4a5568;
+                margin: 4px 8px;
+            }
+        """)
+        
+        # Check if it's a folder to show appropriate actions
+        is_folder = os.path.isdir(app.path)
+        
+        if is_folder:
+            # Folder actions
+            open_action = menu.addAction("Open Folder")
+            open_loc_action = menu.addAction("Open parent folder")
+        else:
+            # File actions
+            run_action = menu.addAction("Run")
+            run_admin_action = menu.addAction("Run as administrator")
+            open_loc_action = menu.addAction("Open location")
+        
         rename_action = menu.addAction("Rename")
         remove_action = menu.addAction("Unpin")
         
         action = menu.exec(global_pos)
         
-        if action == run_action:
-            self._run_app(app)
-        elif action == run_admin_action:
-            self._run_app_admin(app)
-        elif action == open_loc_action:
-            self._open_location(app)
-        elif action == rename_action:
-            self._rename_app(app)
-        elif action == remove_action:
-            self._remove_app(app)
+        if is_folder:
+            if action == open_action:
+                self._run_app(app)  # This will open the folder
+            elif action == open_loc_action:
+                self._open_location(app)
+            elif action == rename_action:
+                self._rename_app(app)
+            elif action == remove_action:
+                self._remove_app(app)
+        else:
+            if action == run_action:
+                self._run_app(app)
+            elif action == run_admin_action:
+                self._run_app_admin(app)
+            elif action == open_loc_action:
+                self._open_location(app)
+            elif action == rename_action:
+                self._rename_app(app)
+            elif action == remove_action:
+                self._remove_app(app)
 
     def _clear_highlights(self):
         """Clear all widget highlights."""
@@ -417,7 +594,7 @@ class AppGrid(QWidget):
             main_window.run_path_admin(app.path)
 
     def _open_location(self, app: AppItem):
-        """Open the location of an application."""
+        """Open the location of an application or folder."""
         main_window = self._find_main_window()
         if main_window and hasattr(main_window, 'open_location'):
             main_window.open_location(app.path)
@@ -474,8 +651,9 @@ class LauncherWindow(MainWindowBase):
         
         # Override window title and size for launcher
         self.setWindowTitle(APP_NAME)
-        self.setMinimumSize(600, 500)
-        self.resize(800, 600)
+        self.setMinimumSize(620, 620)
+        self.setMaximumSize(620, 620)
+        self.resize(620, 620)
         
         # Clear default UI and build launcher interface
         self._clear_default_ui()
@@ -508,29 +686,49 @@ class LauncherWindow(MainWindowBase):
         """Build the launcher-specific user interface."""
         # Header: Title and search
         title_label = QLabel(APP_NAME)
-        title_label.setStyleSheet("font-size: 24px; font-weight: bold; padding: 20px;")
+        title_label.setStyleSheet("""
+            QLabel {
+                font-size: 24px; 
+                font-weight: bold; 
+                padding: 10px; 
+                color: #333333;
+                background-color: transparent;
+            }
+        """)
+        title_label.setAlignment(Qt.AlignCenter)
         
         self.filter_edit = QLineEdit()
-        self.filter_edit.setPlaceholderText("Search apps... (Ctrl+F)")
+        self.filter_edit.setFixedHeight(30)
+        self.filter_edit.setFixedWidth(250)
+        self.filter_edit.setPlaceholderText("Search...")
         self.filter_edit.textChanged.connect(self.on_filter)
         self.filter_edit.setStyleSheet("""
             QLineEdit {
-                padding: 8px;
-                border: 2px solid #ddd;
+                padding: 4px;
+                border: 1px solid #ddd;
                 border-radius: 6px;
                 font-size: 14px;
-                min-width: 200px;
-            }
-            QLineEdit:focus {
-                border-color: #0078d4;
+                margin: 0 20px;
             }
         """)
         
-        # Add header widgets
-        self.header_layout.addWidget(title_label)
-        self.header_layout.addStretch()
-        self.header_layout.addWidget(self.filter_edit)
+        # Create a container widget for the header content
+        header_content = QWidget()
+        header_content_layout = QVBoxLayout(header_content)
+        header_content_layout.setContentsMargins(0, 10, 0, 0)
+        header_content_layout.setSpacing(10)
         
+        # Add title and search box vertically
+        header_content_layout.addWidget(title_label)
+        #header_content_layout.addWidget(self.filter_edit, alignment=Qt.AlignCenter)
+        
+        # Add the header content to the main header layout
+        self.header_layout.addWidget(header_content)
+        
+        # Increase header height to accommodate title and search box
+        self.header_widget.setFixedHeight(100)
+        
+
         # Body: App list and controls
         # Create splitter for better layout control
         splitter = QSplitter(Qt.Vertical)
@@ -626,10 +824,10 @@ class LauncherWindow(MainWindowBase):
             }
         """)
         
+        controls_layout.addStretch()
         controls_layout.addWidget(self.btn_add)
         controls_layout.addWidget(self.btn_run)
         controls_layout.addWidget(self.btn_more)
-        controls_layout.addStretch()
         
         # Add to splitter
         splitter.addWidget(self.app_grid)
@@ -650,13 +848,62 @@ class LauncherWindow(MainWindowBase):
 
     def on_add(self) -> None:
         """Add new apps to the launcher."""
+        # Show menu to choose between files and folders
+        menu = QMenu(self)
+        
+        # Apply dark context menu styling
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #2d3748;
+                color: #e2e8f0;
+                border: 1px solid #4a5568;
+                border-radius: 6px;
+                padding: 4px 0px;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                font-size: 12px;
+            }
+            QMenu::item {
+                background-color: transparent;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 0px;
+            }
+            QMenu::item:selected {
+                background-color: #4a5568;
+                color: #ffffff;
+            }
+            QMenu::item:pressed {
+                background-color: #2d3748;
+                color: #e2e8f0;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #4a5568;
+                margin: 4px 8px;
+            }
+        """)
+        
+        add_files_action = menu.addAction("Add Files...")
+        add_folder_action = menu.addAction("Add Folder...")
+        
+        # Position menu near the add button
+        button_pos = self.btn_add.mapToGlobal(self.btn_add.rect().bottomLeft())
+        action = menu.exec(button_pos)
+        
+        if action == add_files_action:
+            self.on_add_files()
+        elif action == add_folder_action:
+            self.on_add_folder()
+
+    def on_add_files(self) -> None:
+        """Add new files to the launcher."""
         start_dir = os.path.expandvars(r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs")
         if not os.path.exists(start_dir):
             start_dir = os.path.expanduser("~")
             
         paths, _ = QFileDialog.getOpenFileNames(
             self, 
-            "Select items to pin", 
+            "Select files to pin", 
             start_dir,
             "All Files (*.*)"
         )
@@ -671,6 +918,36 @@ class LauncherWindow(MainWindowBase):
         self.config.save_apps(self.apps)
         self.app_grid.populate(self.apps)
 
+    def on_add_folder(self) -> None:
+        """Add a folder to the launcher."""
+        start_dir = os.path.expandvars(r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs")
+        if not os.path.exists(start_dir):
+            start_dir = os.path.expanduser("~")
+            
+        folder_path = QFileDialog.getExistingDirectory(
+            self,
+            "Select folder to pin",
+            start_dir
+        )
+        
+        if not folder_path:
+            return
+            
+        # Debug logging
+        print(f"Selected folder: {folder_path}")
+        print(f"Folder exists: {os.path.exists(folder_path)}")
+        print(f"Is directory: {os.path.isdir(folder_path)}")
+        print(f"Absolute path: {os.path.abspath(folder_path)}")
+            
+        # Check if folder is already added
+        if folder_path not in [app.path for app in self.apps]:
+            self.apps.append(AppItem(path=folder_path))
+            self.config.save_apps(self.apps)
+            self.app_grid.populate(self.apps)
+            print(f"Folder added successfully: {folder_path}")
+        else:
+            print(f"Folder already exists in launcher: {folder_path}")
+
     def on_run_selected(self) -> None:
         """Run the currently selected app."""
         app = self.app_grid.current_app()
@@ -681,15 +958,51 @@ class LauncherWindow(MainWindowBase):
     def on_more_menu(self) -> None:
         """Show the more options menu."""
         menu = QMenu(self)
-        add_action = menu.addAction("Add items…")
+        
+        # Apply dark context menu styling
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #2d3748;
+                color: #e2e8f0;
+                border: 1px solid #4a5568;
+                border-radius: 6px;
+                padding: 4px 0px;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                font-size: 12px;
+            }
+            QMenu::item {
+                background-color: transparent;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 0px;
+            }
+            QMenu::item:selected {
+                background-color: #4a5568;
+                color: #ffffff;
+            }
+            QMenu::item:pressed {
+                background-color: #2d3748;
+                color: #e2e8f0;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #4a5568;
+                margin: 4px 8px;
+            }
+        """)
+        
+        add_files_action = menu.addAction("Add Files...")
+        add_folder_action = menu.addAction("Add Folder...")
         quit_action = menu.addAction("Exit")
         
         # Position menu near the button
         button_pos = self.btn_more.mapToGlobal(self.btn_more.rect().bottomLeft())
         action = menu.exec(button_pos)
         
-        if action == add_action:
-            self.on_add()
+        if action == add_files_action:
+            self.on_add_files()
+        elif action == add_folder_action:
+            self.on_add_folder()
         elif action == quit_action:
             QApplication.quit()
 
@@ -700,24 +1013,77 @@ class LauncherWindow(MainWindowBase):
             return
             
         menu = QMenu(self)
-        run_action = menu.addAction("Run")
-        run_admin_action = menu.addAction("Run as administrator")
-        open_loc_action = menu.addAction("Open location")
+        
+        # Apply dark context menu styling
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #2d3748;
+                color: #e2e8f0;
+                border: 1px solid #4a5568;
+                border-radius: 6px;
+                padding: 4px 0px;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                font-size: 12px;
+            }
+            QMenu::item {
+                background-color: transparent;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 0px;
+            }
+            QMenu::item:selected {
+                background-color: #4a5568;
+                color: #ffffff;
+            }
+            QMenu::item:pressed {
+                background-color: #2d3748;
+                color: #e2e8f0;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #4a5568;
+                margin: 4px 8px;
+            }
+        """)
+        
+        # Check if it's a folder to show appropriate actions
+        is_folder = os.path.isdir(app.path)
+        
+        if is_folder:
+            # Folder actions
+            open_action = menu.addAction("Open Folder")
+            open_loc_action = menu.addAction("Open parent folder")
+        else:
+            # File actions
+            run_action = menu.addAction("Run")
+            run_admin_action = menu.addAction("Run as administrator")
+            open_loc_action = menu.addAction("Open location")
+        
         rename_action = menu.addAction("Rename")
         remove_action = menu.addAction("Unpin")
         
         action = menu.exec(self.mapToGlobal(pos))
         
-        if action == run_action:
-            self.run_path(app.path)
-        elif action == run_admin_action:
-            self.run_path_admin(app.path)
-        elif action == open_loc_action:
-            self.open_location(app.path)
-        elif action == rename_action:
-            self.rename_app(app)
-        elif action == remove_action:
-            self.remove_app(app)
+        if is_folder:
+            if action == open_action:
+                self.run_path(app.path)  # This will open the folder
+            elif action == open_loc_action:
+                self.open_location(app.path)
+            elif action == rename_action:
+                self.rename_app(app)
+            elif action == remove_action:
+                self.remove_app(app)
+        else:
+            if action == run_action:
+                self.run_path(app.path)
+            elif action == run_admin_action:
+                self.run_path_admin(app.path)
+            elif action == open_loc_action:
+                self.open_location(app.path)
+            elif action == rename_action:
+                self.rename_app(app)
+            elif action == remove_action:
+                self.remove_app(app)
 
     def rename_app(self, app: AppItem) -> None:
         """Rename an app item."""
@@ -751,28 +1117,60 @@ class LauncherWindow(MainWindowBase):
 
     def open_location(self, path: str) -> None:
         """Open the folder containing the selected item."""
-        dir_path = str(Path(path).parent)
         try:
-            subprocess.Popen(["explorer", dir_path])
+            if os.path.isdir(path):
+                # For folders, open the parent directory
+                dir_path = str(Path(path).parent)
+            else:
+                # For files, open the directory containing the file
+                dir_path = str(Path(path).parent)
+            
+            # Only open if we have a valid parent directory (not root)
+            if dir_path and dir_path != path:
+                normalized_dir = os.path.normpath(dir_path)
+                print(f"Opening parent directory: {normalized_dir}")
+                subprocess.Popen(["explorer", normalized_dir])
+            else:
+                # If no parent directory (root drive), just open the item itself
+                normalized_path = os.path.normpath(path)
+                print(f"Opening item itself: {normalized_path}")
+                subprocess.Popen(["explorer", normalized_path])
         except Exception as e:
             QMessageBox.warning(self, APP_NAME, f"Failed to open location:\n{e}")
 
     def run_path(self, path: str) -> None:
-        """Run a file with proper working directory."""
+        """Run a file with proper working directory or open a folder."""
         try:
-            target_dir = str(Path(path).parent)
-            path_ps = path.replace("'", "''")
-            dir_ps = target_dir.replace("'", "''")
-            ps_cmd = [
-                "powershell",
-                "-NoProfile",
-                "-WindowStyle",
-                "Hidden",
-                "-Command",
-                f"Start-Process -FilePath '{path_ps}' -WorkingDirectory '{dir_ps}'"
-            ]
-            subprocess.Popen(ps_cmd)
+            # Debug logging
+            print(f"run_path called with: {path}")
+            print(f"Path exists: {os.path.exists(path)}")
+            print(f"Is directory: {os.path.isdir(path)}")
+            print(f"Absolute path: {os.path.abspath(path)}")
+            
+            # Check if the path is a directory
+            if os.path.isdir(path):
+                # Open folder in Explorer - normalize path to Windows format
+                normalized_path = os.path.normpath(path)
+                print(f"Normalized path: {normalized_path}")
+                print(f"Opening folder in Explorer: {normalized_path}")
+                print(f"Explorer command: explorer \"{normalized_path}\"")
+                subprocess.Popen(["explorer", normalized_path])
+            else:
+                # Run file with proper working directory
+                target_dir = str(Path(path).parent)
+                path_ps = path.replace("'", "''")
+                dir_ps = target_dir.replace("'", "''")
+                ps_cmd = [
+                    "powershell",
+                    "-NoProfile",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-Command",
+                    f"Start-Process -FilePath '{path_ps}' -WorkingDirectory '{dir_ps}'"
+                ]
+                subprocess.Popen(ps_cmd)
         except Exception as e:
+            print(f"Error in run_path: {e}")
             QMessageBox.warning(self, APP_NAME, f"Failed to run:\n{e}")
 
     def run_path_admin(self, path: str) -> None:
