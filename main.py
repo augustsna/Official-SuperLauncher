@@ -1057,6 +1057,17 @@ class AppGrid(QWidget):
         main_window = self._find_main_window()
         if main_window and hasattr(main_window, 'run_path'):
             main_window.run_path(app.path)
+    
+    def _show_item_missing_error(self, app: AppItem):
+        """Show error when trying to run a missing item."""
+        from PySide6.QtWidgets import QMessageBox
+        
+        QMessageBox.warning(
+            self,
+            "Item Not Found",
+            f"The item '{app.display_name()}' no longer exists at:\n{app.path}\n\nPlease unpin it from the launcher or update the path.",
+            QMessageBox.Ok
+        )
 
     def _run_app_admin(self, app: AppItem):
         """Run an application as administrator."""
@@ -1944,6 +1955,16 @@ class LauncherWindow(MainWindowBase):
     def run_path(self, path: str) -> None:
         """Run a file with proper working directory or open a folder."""
         try:
+            # Check if the path exists before trying to run it
+            if not os.path.exists(path):
+                QMessageBox.warning(
+                    self, 
+                    "Item Not Found", 
+                    f"The item no longer exists at:\n{path}\n\nPlease unpin it from the launcher or update the path.",
+                    QMessageBox.Ok
+                )
+                return
+            
             # Debug logging
             print(f"run_path called with: {path}")
             print(f"Path exists: {os.path.exists(path)}")
