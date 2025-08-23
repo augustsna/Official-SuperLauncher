@@ -351,7 +351,7 @@ class MainWindow(QMainWindow):
 	def open_location(self, path: str) -> None:
 		dir_path = str(Path(path).parent)
 		try:
-			subprocess.Popen(["explorer", dir_path])
+			subprocess.Popen(["explorer", dir_path], creationflags=subprocess.CREATE_NO_WINDOW)
 		except Exception as e:
 			QMessageBox.warning(self, APP_NAME, f"Failed to open location:\n{e}")
 
@@ -368,7 +368,7 @@ class MainWindow(QMainWindow):
 				"-Command",
 				f"Start-Process -FilePath '{path_ps}' -WorkingDirectory '{dir_ps}'"
 			]
-			subprocess.Popen(ps_cmd)
+			subprocess.Popen(ps_cmd, creationflags=subprocess.CREATE_NO_WINDOW)
 		except Exception as e:
 			QMessageBox.warning(self, APP_NAME, f"Failed to run:\n{e}")
 
@@ -386,7 +386,7 @@ class MainWindow(QMainWindow):
 			f"Start-Process -FilePath '{ps_path}' -WorkingDirectory '{ps_dir}' -Verb RunAs"
 		]
 		try:
-			subprocess.Popen(ps_cmd)
+			subprocess.Popen(ps_cmd, creationflags=subprocess.CREATE_NO_WINDOW)
 		except Exception as e:
 			QMessageBox.warning(self, APP_NAME, f"Failed to run as admin:\n{e}")
 

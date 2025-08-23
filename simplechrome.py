@@ -2474,7 +2474,7 @@ class SamplechromeUI(QWidget):
             
             # Launch Chrome with the profile
             cmd = [chrome_path, f"--profile-directory={profile_id}"]
-            subprocess.Popen(cmd)
+            subprocess.Popen(cmd, creationflags=subprocess.CREATE_NO_WINDOW)
             
             # No success dialog needed - profile launches silently
             

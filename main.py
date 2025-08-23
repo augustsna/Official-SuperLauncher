@@ -43,6 +43,41 @@ APP_NAME = "SuperLauncher"
 class IconExtractor:
     """Extract icons from Windows executables and files using multiple fallback methods."""
     
+    # Class-level cache for icons to improve performance
+    _icon_cache = {}
+    _cache_size_limit = 100  # Maximum number of cached icons
+    
+    @staticmethod
+    def _get_cache_key(file_path: str, sizes: List[int] = None) -> str:
+        """Generate a cache key for the icon request."""
+        if sizes is None:
+            sizes = [32]  # Default size
+        return f"{file_path}:{','.join(map(str, sorted(sizes)))}"
+    
+    @staticmethod
+    def _add_to_cache(file_path: str, sizes: List[int], icon: QIcon) -> None:
+        """Add an icon to the cache."""
+        cache_key = IconExtractor._get_cache_key(file_path, sizes)
+        
+        # Implement simple LRU cache
+        if len(IconExtractor._icon_cache) >= IconExtractor._cache_size_limit:
+            # Remove oldest entry (simple approach - remove first item)
+            oldest_key = next(iter(IconExtractor._icon_cache))
+            del IconExtractor._icon_cache[oldest_key]
+        
+        IconExtractor._icon_cache[cache_key] = icon
+    
+    @staticmethod
+    def _get_from_cache(file_path: str, sizes: List[int] = None) -> Optional[QIcon]:
+        """Get an icon from the cache if available."""
+        cache_key = IconExtractor._get_cache_key(file_path, sizes)
+        return IconExtractor._icon_cache.get(cache_key)
+    
+    @staticmethod
+    def clear_cache() -> None:
+        """Clear the icon cache."""
+        IconExtractor._icon_cache.clear()
+    
     @staticmethod
     def extract_icon(file_path: str, size: int = 32) -> QIcon:
         """
@@ -51,19 +86,91 @@ class IconExtractor:
         """
         file_path = str(Path(file_path).resolve())
         
+        # Check cache first
+        cached_icon = IconExtractor._get_from_cache(file_path, [size])
+        if cached_icon:
+            return cached_icon
+        
         # Method 1: Try win32 API (most accurate, like SuperLauncher)
         if HAS_WIN32:
             icon = IconExtractor._extract_with_win32(file_path, size)
             if icon and not icon.isNull():
+                IconExtractor._add_to_cache(file_path, [size], icon)
                 return icon
         
         # Method 2: Try system icon association
         icon = IconExtractor._extract_system_icon(file_path)
         if icon and not icon.isNull():
+            IconExtractor._add_to_cache(file_path, [size], icon)
             return icon
         
         # Method 3: Default icon based on file extension
-        return IconExtractor._get_default_icon(file_path)
+        icon = IconExtractor._get_default_icon(file_path)
+        IconExtractor._add_to_cache(file_path, [size], icon)
+        return icon
+    
+    @staticmethod
+    def extract_icon_multi_size(file_path: str, sizes: List[int] = None) -> QIcon:
+        """
+        Extract icon at multiple sizes for better scaling quality.
+        This method provides the best visual results by extracting icons
+        at multiple resolutions and letting Qt choose the best one.
+        """
+        try:
+            if sizes is None:
+                sizes = [16, 24, 32, 48, 64, 128, 256]  # Common icon sizes
+            
+            file_path = str(Path(file_path).resolve())
+            
+            # Check cache first
+            cached_icon = IconExtractor._get_from_cache(file_path, sizes)
+            if cached_icon:
+                return cached_icon
+            
+            icon = QIcon()
+            
+            # Method 1: Try win32 API with multiple sizes
+            if HAS_WIN32:
+                for size in sizes:
+                    try:
+                        single_icon = IconExtractor._extract_with_win32(file_path, size)
+                        if single_icon and not single_icon.isNull():
+                            pixmap = single_icon.pixmap(size, size)
+                            if not pixmap.isNull():
+                                icon.addPixmap(pixmap)
+                    except Exception:
+                        continue
+                
+                # If we got any icons, return the multi-size icon
+                if not icon.isNull():
+                    IconExtractor._add_to_cache(file_path, sizes, icon)
+                    return icon
+            
+            # Method 2: Try system icon association (also supports multiple sizes)
+            try:
+                file_info = QFileInfo(file_path)
+                provider = QFileIconProvider()
+                system_icon = provider.icon(file_info)
+                
+                # Extract multiple sizes from system icon
+                for size in sizes:
+                    pixmap = system_icon.pixmap(size, size)
+                    if not pixmap.isNull():
+                        icon.addPixmap(pixmap)
+                
+                if not icon.isNull():
+                    IconExtractor._add_to_cache(file_path, sizes, icon)
+                    return icon
+            except Exception:
+                pass
+            
+            # Method 3: Default icon with multiple sizes
+            icon = IconExtractor._get_default_icon_multi_size(file_path, sizes)
+            IconExtractor._add_to_cache(file_path, sizes, icon)
+            return icon
+        except Exception:
+            # If multi-size extraction fails, fall back to basic method
+            return IconExtractor.extract_icon(file_path, sizes[0] if sizes else 32)
     
     @staticmethod
     def _extract_with_win32(file_path: str, size: int = 32) -> Optional[QIcon]:
@@ -150,6 +257,339 @@ class IconExtractor:
                 
         except Exception:
             return QIcon()
+    
+    @staticmethod
+    def _get_default_icon_multi_size(file_path: str, sizes: List[int]) -> QIcon:
+        """Get default icon at multiple sizes for better scaling."""
+        try:
+            app = QApplication.instance()
+            if not app:
+                return QIcon()
+            
+            icon = QIcon()
+            
+            # Check if it's a directory first
+            if os.path.isdir(file_path):
+                base_icon = app.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon)
+            else:
+                ext = Path(file_path).suffix.lower()
+                
+                # Executable files
+                if ext in ['.exe', '.msi', '.bat', '.cmd', '.com']:
+                    base_icon = app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+                
+                # Script files
+                elif ext in ['.py', '.pyw', '.js', '.vbs', '.ps1']:
+                    base_icon = app.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+                
+                # Documents
+                elif ext in ['.txt', '.doc', '.docx', '.pdf', '.rtf']:
+                    base_icon = app.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView)
+                
+                # Media files
+                elif ext in ['.mp3', '.mp4', '.avi', '.mov', '.wav']:
+                    base_icon = app.style().standardIcon(QStyle.StandardPixmap.SP_DriveNetIcon)
+                
+                # Folders/shortcuts
+                elif ext in ['.lnk']:
+                    base_icon = app.style().standardIcon(QStyle.StandardPixmap.SP_FileLinkIcon)
+                
+                # Default file icon
+                else:
+                    base_icon = app.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+            
+            # Add multiple sizes to the icon
+            for size in sizes:
+                pixmap = base_icon.pixmap(size, size)
+                if not pixmap.isNull():
+                    icon.addPixmap(pixmap)
+            
+            return icon
+                
+        except Exception:
+            return QIcon()
+
+    @staticmethod
+    def create_high_quality_icon(base_icon: QIcon, target_size: int) -> QIcon:
+        """
+        Create a high-quality icon by scaling with better interpolation.
+        This method provides smoother scaling for icons that need to be resized.
+        """
+        if base_icon.isNull():
+            return base_icon
+        
+        # Try to get the largest available size first
+        available_sizes = base_icon.availableSizes()
+        if not available_sizes:
+            return base_icon
+        
+        # Find the best source size (closest to target but not smaller)
+        best_size = None
+        for size in sorted(available_sizes, key=lambda s: s.width(), reverse=True):
+            if size.width() >= target_size:
+                best_size = size
+                break
+        
+        # If no larger size found, use the largest available
+        if not best_size:
+            best_size = max(available_sizes, key=lambda s: s.width())
+        
+        # Extract the pixmap at the best size
+        source_pixmap = base_icon.pixmap(best_size)
+        if source_pixmap.isNull():
+            return base_icon
+        
+        # Create a new icon with the scaled pixmap
+        scaled_icon = QIcon()
+        
+        # Add the target size with high-quality scaling
+        if best_size.width() == target_size:
+            # No scaling needed
+            scaled_icon.addPixmap(source_pixmap)
+        else:
+            # Scale with high quality
+            scaled_pixmap = source_pixmap.scaled(
+                target_size, target_size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            scaled_icon.addPixmap(scaled_pixmap)
+        
+        # Also add the original sizes for better quality
+        for size in available_sizes:
+            if size.width() != target_size:
+                pixmap = base_icon.pixmap(size)
+                if not pixmap.isNull():
+                    scaled_icon.addPixmap(pixmap)
+        
+        return scaled_icon
+    
+    @staticmethod
+    def create_dpi_aware_icon(base_icon: QIcon, target_size: int, device_pixel_ratio: float = 1.0) -> QIcon:
+        """
+        Create a DPI-aware icon that looks crisp on high-DPI displays.
+        This method accounts for the device pixel ratio to ensure icons
+        are rendered at the appropriate resolution.
+        """
+        if base_icon.isNull():
+            return base_icon
+        
+        # Calculate the actual pixel size needed for the target logical size
+        actual_pixel_size = int(target_size * device_pixel_ratio)
+        
+        # Get available sizes
+        available_sizes = base_icon.availableSizes()
+        if not available_sizes:
+            return base_icon
+        
+        # Find the best source size for the actual pixel size
+        best_size = None
+        for size in sorted(available_sizes, key=lambda s: s.width(), reverse=True):
+            if size.width() >= actual_pixel_size:
+                best_size = size
+                break
+        
+        # If no larger size found, use the largest available
+        if not best_size:
+            best_size = max(available_sizes, key=lambda s: s.width())
+        
+        # Extract the pixmap at the best size
+        source_pixmap = base_icon.pixmap(best_size)
+        if source_pixmap.isNull():
+            return base_icon
+        
+        # Create a new icon
+        dpi_icon = QIcon()
+        
+        # Add the target logical size
+        if best_size.width() == actual_pixel_size:
+            # No scaling needed, but we need to set the device pixel ratio
+            dpi_icon.addPixmap(source_pixmap)
+        else:
+            # Scale to the actual pixel size with high quality
+            scaled_pixmap = source_pixmap.scaled(
+                actual_pixel_size, actual_pixel_size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            dpi_icon.addPixmap(scaled_pixmap)
+        
+        # Add other available sizes for fallback
+        for size in available_sizes:
+            if size.width() != actual_pixel_size:
+                pixmap = base_icon.pixmap(size)
+                if not pixmap.isNull():
+                    dpi_icon.addPixmap(pixmap)
+        
+        return dpi_icon
+    
+    @staticmethod
+    def get_icon_quality_settings() -> dict:
+        """
+        Get the current icon quality settings.
+        Returns a dictionary with quality configuration options.
+        """
+        return {
+            'use_high_quality_scaling': True,
+            'use_dpi_aware_scaling': True,
+            'preferred_source_sizes': [32, 48, 64, 128, 256],
+            'fallback_scaling_method': 'smooth',  # 'smooth', 'fast', 'best'
+            'cache_enabled': True,
+            'cache_size_limit': 100
+        }
+    
+    @staticmethod
+    def set_icon_quality_settings(settings: dict) -> None:
+        """
+        Update icon quality settings.
+        This allows users to customize the icon scaling behavior.
+        """
+        if 'cache_size_limit' in settings:
+            IconExtractor._cache_size_limit = settings['cache_size_limit']
+        
+        if 'cache_enabled' in settings and not settings['cache_enabled']:
+            IconExtractor.clear_cache()
+    
+    @staticmethod
+    def extract_icon_with_quality(file_path: str, target_size: int, quality_settings: dict = None) -> QIcon:
+        """
+        Extract icon with customizable quality settings.
+        This is the main method that users should call for best results.
+        """
+        try:
+            if quality_settings is None:
+                quality_settings = IconExtractor.get_icon_quality_settings()
+            
+            # Extract base icon with multiple sizes
+            base_icon = IconExtractor.extract_icon_multi_size(
+                file_path, 
+                quality_settings.get('preferred_source_sizes', [32, 48, 64, 128])
+            )
+            
+            if base_icon.isNull():
+                return base_icon
+            
+            # Apply quality settings
+            if quality_settings.get('use_dpi_aware_scaling', True):
+                # Get device pixel ratio
+                device_pixel_ratio = 1.0
+                try:
+                    screen = QApplication.primaryScreen()
+                    if screen:
+                        device_pixel_ratio = screen.devicePixelRatio()
+                except Exception:
+                    pass
+                
+                return IconExtractor.create_dpi_aware_icon(base_icon, target_size, device_pixel_ratio)
+            elif quality_settings.get('use_high_quality_scaling', True):
+                return IconExtractor.create_high_quality_icon(base_icon, target_size)
+            else:
+                # Return base icon without additional processing
+                return base_icon
+        except Exception:
+            # If quality extraction fails, fall back to basic method
+            return IconExtractor.extract_icon(file_path, target_size)
+
+    @staticmethod
+    def get_icon_diagnostics(file_path: str) -> dict:
+        """
+        Get diagnostic information about icon extraction for a file.
+        This helps users understand what's happening with their icons.
+        """
+        diagnostics = {
+            'file_path': file_path,
+            'file_exists': False,
+            'file_type': 'unknown',
+            'extraction_methods': [],
+            'available_sizes': [],
+            'errors': [],
+            'recommendations': []
+        }
+        
+        try:
+            file_path = str(Path(file_path).resolve())
+            diagnostics['file_path'] = file_path
+            diagnostics['file_exists'] = os.path.exists(file_path)
+            
+            if not diagnostics['file_exists']:
+                diagnostics['errors'].append("File does not exist")
+                return diagnostics
+            
+            # Determine file type
+            if os.path.isdir(file_path):
+                diagnostics['file_type'] = 'directory'
+            else:
+                ext = Path(file_path).suffix.lower()
+                if ext in ['.exe', '.msi', '.bat', '.cmd', '.com']:
+                    diagnostics['file_type'] = 'executable'
+                elif ext in ['.py', '.pyw', '.js', '.vbs', '.ps1']:
+                    diagnostics['file_type'] = 'script'
+                elif ext in ['.txt', '.doc', '.docx', '.pdf', '.rtf']:
+                    diagnostics['file_type'] = 'document'
+                elif ext in ['.mp3', '.mp4', '.avi', '.mov', '.wav']:
+                    diagnostics['file_type'] = 'media'
+                elif ext in ['.lnk']:
+                    diagnostics['file_type'] = 'shortcut'
+                else:
+                    diagnostics['file_type'] = 'file'
+            
+            # Test different extraction methods
+            if HAS_WIN32:
+                try:
+                    win32_icon = IconExtractor._extract_with_win32(file_path, 32)
+                    if win32_icon and not win32_icon.isNull():
+                        diagnostics['extraction_methods'].append('win32_api')
+                        diagnostics['available_sizes'].extend([s.width() for s in win32_icon.availableSizes()])
+                    else:
+                        diagnostics['errors'].append("Win32 API extraction failed")
+                except Exception as e:
+                    diagnostics['errors'].append(f"Win32 API error: {str(e)}")
+            else:
+                diagnostics['recommendations'].append("Install pywin32 for better icon extraction")
+            
+            # Test system icon extraction
+            try:
+                system_icon = IconExtractor._extract_system_icon(file_path)
+                if system_icon and not system_icon.isNull():
+                    diagnostics['extraction_methods'].append('system_icon')
+                    diagnostics['available_sizes'].extend([s.width() for s in system_icon.availableSizes()])
+                else:
+                    diagnostics['errors'].append("System icon extraction failed")
+            except Exception as e:
+                diagnostics['errors'].append(f"System icon error: {str(e)}")
+            
+            # Test default icon
+            try:
+                default_icon = IconExtractor._get_default_icon(file_path)
+                if default_icon and not default_icon.isNull():
+                    diagnostics['extraction_methods'].append('default_icon')
+                    diagnostics['available_sizes'].extend([s.width() for s in default_icon.availableSizes()])
+                else:
+                    diagnostics['errors'].append("Default icon extraction failed")
+            except Exception as e:
+                diagnostics['errors'].append(f"Default icon error: {str(e)}")
+            
+            # Remove duplicates and sort sizes
+            diagnostics['available_sizes'] = sorted(list(set(diagnostics['available_sizes'])))
+            
+            # Generate recommendations
+            if not diagnostics['extraction_methods']:
+                diagnostics['recommendations'].append("No icon extraction methods succeeded")
+            elif len(diagnostics['extraction_methods']) == 1:
+                diagnostics['recommendations'].append("Only one extraction method working - consider fallbacks")
+            
+            if not diagnostics['available_sizes']:
+                diagnostics['recommendations'].append("No icon sizes available - check file format")
+            elif max(diagnostics['available_sizes']) < 48:
+                diagnostics['recommendations'].append("Icons may appear small - enable high-quality scaling")
+            
+            if diagnostics['file_type'] == 'executable' and 'win32_api' not in diagnostics['extraction_methods']:
+                diagnostics['recommendations'].append("For executables, install pywin32 for best results")
+            
+        except Exception as e:
+            diagnostics['errors'].append(f"General error: {str(e)}")
+        
+        return diagnostics
 
 
 @dataclass
@@ -297,8 +737,33 @@ class AppGrid(QWidget):
         
         # Icon
         icon_label = QLabel()
-        icon = IconExtractor.extract_icon(app.path, 48)  # Larger icon for grid
-        icon_label.setPixmap(icon.pixmap(48, 48))
+        try:
+            # Use the new quality-aware icon extraction method
+            icon = IconExtractor.extract_icon_with_quality(app.path, 48)
+            if icon and not icon.isNull():
+                pixmap = icon.pixmap(48, 48)
+                if not pixmap.isNull():
+                    icon_label.setPixmap(pixmap)
+                else:
+                    # Fallback to basic icon extraction
+                    fallback_icon = IconExtractor.extract_icon(app.path, 48)
+                    if fallback_icon and not fallback_icon.isNull():
+                        icon_label.setPixmap(fallback_icon.pixmap(48, 48))
+            else:
+                # Fallback to basic icon extraction
+                fallback_icon = IconExtractor.extract_icon(app.path, 48)
+                if fallback_icon and not fallback_icon.isNull():
+                    icon_label.setPixmap(fallback_icon.pixmap(48, 48))
+        except Exception as e:
+            # If all else fails, try basic icon extraction
+            try:
+                fallback_icon = IconExtractor.extract_icon(app.path, 48)
+                if fallback_icon and not fallback_icon.isNull():
+                    icon_label.setPixmap(fallback_icon.pixmap(48, 48))
+            except Exception:
+                # Last resort: leave icon label empty
+                pass
+        
         icon_label.setAlignment(Qt.AlignCenter)
         icon_label.setStyleSheet("""
             QLabel {
@@ -548,6 +1013,8 @@ class AppGrid(QWidget):
             open_loc_action = menu.addAction("Open location")
         
         rename_action = menu.addAction("Rename")
+        menu.addSeparator()
+        icon_diagnostics_action = menu.addAction("Icon Diagnostics...")
         remove_action = menu.addAction("Unpin")
         
         action = menu.exec(global_pos)
@@ -559,6 +1026,8 @@ class AppGrid(QWidget):
                 self._open_location(app)
             elif action == rename_action:
                 self._rename_app(app)
+            elif action == icon_diagnostics_action:
+                self._show_icon_diagnostics()
             elif action == remove_action:
                 self._remove_app(app)
         else:
@@ -570,6 +1039,8 @@ class AppGrid(QWidget):
                 self._open_location(app)
             elif action == rename_action:
                 self._rename_app(app)
+            elif action == icon_diagnostics_action:
+                self._show_icon_diagnostics()
             elif action == remove_action:
                 self._remove_app(app)
 
@@ -649,6 +1120,19 @@ class LauncherWindow(MainWindowBase):
         self.config = ConfigStore()
         self.apps: List[AppItem] = self.config.load_apps()
         
+        # Icon quality settings
+        self.icon_quality_settings = {
+            'use_high_quality_scaling': True,
+            'use_dpi_aware_scaling': True,
+            'preferred_source_sizes': [32, 48, 64, 128, 256],
+            'fallback_scaling_method': 'smooth',
+            'cache_enabled': True,
+            'cache_size_limit': 100
+        }
+        
+        # Apply icon quality settings
+        self._apply_icon_quality_settings()
+        
         # Override window title and size for launcher
         self.setWindowTitle(APP_NAME)
         self.setMinimumSize(620, 620)
@@ -668,6 +1152,248 @@ class LauncherWindow(MainWindowBase):
         
         self._shortcut_filter = QShortcut(QKeySequence("Ctrl+F"), self)
         self._shortcut_filter.activated.connect(self._focus_filter)
+        
+        self._shortcut_icon_settings = QShortcut(QKeySequence("Ctrl+I"), self)
+        self._shortcut_icon_settings.activated.connect(self._show_icon_quality_settings)
+        
+        self._shortcut_icon_diagnostics = QShortcut(QKeySequence("Ctrl+D"), self)
+        self._shortcut_icon_diagnostics.activated.connect(self._show_icon_diagnostics)
+    
+    def _apply_icon_quality_settings(self):
+        """Apply the current icon quality settings to the IconExtractor."""
+        IconExtractor.set_icon_quality_settings(self.icon_quality_settings)
+    
+    def _show_icon_quality_settings(self):
+        """Show a dialog to configure icon quality settings."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QSpinBox, QComboBox, QLabel, QPushButton
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Icon Quality Settings")
+        dialog.setModal(True)
+        dialog.resize(400, 300)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # High quality scaling checkbox
+        high_quality_cb = QCheckBox("Use high-quality scaling")
+        high_quality_cb.setChecked(self.icon_quality_settings['use_high_quality_scaling'])
+        layout.addWidget(high_quality_cb)
+        
+        # DPI-aware scaling checkbox
+        dpi_aware_cb = QCheckBox("Use DPI-aware scaling")
+        dpi_aware_cb.setChecked(self.icon_quality_settings['use_dpi_aware_scaling'])
+        layout.addWidget(dpi_aware_cb)
+        
+        # Cache enabled checkbox
+        cache_cb = QCheckBox("Enable icon caching")
+        cache_cb.setChecked(self.icon_quality_settings['cache_enabled'])
+        layout.addWidget(cache_cb)
+        
+        # Cache size limit
+        cache_layout = QHBoxLayout()
+        cache_layout.addWidget(QLabel("Cache size limit:"))
+        cache_spin = QSpinBox()
+        cache_spin.setRange(50, 500)
+        cache_spin.setValue(self.icon_quality_settings['cache_size_limit'])
+        cache_layout.addWidget(cache_spin)
+        layout.addLayout(cache_layout)
+        
+        # Scaling method
+        scaling_layout = QHBoxLayout()
+        scaling_layout.addWidget(QLabel("Scaling method:"))
+        scaling_combo = QComboBox()
+        scaling_combo.addItems(['smooth', 'fast', 'best'])
+        scaling_combo.setCurrentText(self.icon_quality_settings['fallback_scaling_method'])
+        scaling_layout.addWidget(scaling_combo)
+        layout.addLayout(scaling_layout)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        apply_btn = QPushButton("Apply")
+        cancel_btn = QPushButton("Cancel")
+        button_layout.addWidget(apply_btn)
+        button_layout.addWidget(cancel_btn)
+        layout.addLayout(button_layout)
+        
+        # Connect buttons
+        apply_btn.clicked.connect(lambda: self._apply_icon_settings_dialog(
+            dialog, high_quality_cb.isChecked(), dpi_aware_cb.isChecked(),
+            cache_cb.isChecked(), cache_spin.value(), scaling_combo.currentText()
+        ))
+        cancel_btn.clicked.connect(dialog.reject)
+        
+        dialog.exec()
+    
+    def _show_icon_diagnostics(self):
+        """Show a dialog to diagnose icon issues for the selected app."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QScrollArea
+        
+        # Get the currently selected app
+        selected_app = self.app_grid.current_app()
+        if not selected_app:
+            QMessageBox.information(self, "Icon Diagnostics", "Please select an app first to diagnose its icons.")
+            return
+        
+        # Get diagnostics
+        diagnostics = IconExtractor.get_icon_diagnostics(selected_app.path)
+        
+        # Create dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Icon Diagnostics - {selected_app.display_name()}")
+        dialog.setModal(True)
+        dialog.resize(600, 500)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # App info
+        app_info = QLabel(f"App: {selected_app.display_name()}\nPath: {selected_app.path}")
+        app_info.setStyleSheet("font-weight: bold; padding: 10px; background: #f0f0f0; border-radius: 5px;")
+        layout.addWidget(app_info)
+        
+        # File status
+        status_text = f"File exists: {'✓' if diagnostics['file_exists'] else '✗'}\n"
+        status_text += f"File type: {diagnostics['file_type']}"
+        status_label = QLabel(status_text)
+        status_label.setStyleSheet("padding: 5px;")
+        layout.addWidget(status_label)
+        
+        # Extraction methods
+        methods_text = "Extraction methods:\n"
+        if diagnostics['extraction_methods']:
+            for method in diagnostics['extraction_methods']:
+                methods_text += f"  ✓ {method}\n"
+        else:
+            methods_text += "  ✗ None working\n"
+        
+        methods_label = QLabel(methods_text)
+        methods_label.setStyleSheet("padding: 5px;")
+        layout.addWidget(methods_label)
+        
+        # Available sizes
+        sizes_text = "Available icon sizes:\n"
+        if diagnostics['available_sizes']:
+            sizes_text += f"  {', '.join(map(str, diagnostics['available_sizes']))}\n"
+        else:
+            sizes_text += "  None\n"
+        
+        sizes_label = QLabel(sizes_text)
+        sizes_label.setStyleSheet("padding: 5px;")
+        layout.addWidget(sizes_label)
+        
+        # Errors and recommendations
+        if diagnostics['errors'] or diagnostics['recommendations']:
+            issues_text = ""
+            if diagnostics['errors']:
+                issues_text += "Errors:\n"
+                for error in diagnostics['errors']:
+                    issues_text += f"  ✗ {error}\n"
+            
+            if diagnostics['recommendations']:
+                issues_text += "\nRecommendations:\n"
+                for rec in diagnostics['recommendations']:
+                    issues_text += f"  💡 {rec}\n"
+            
+            issues_textedit = QTextEdit()
+            issues_textedit.setPlainText(issues_text)
+            issues_textedit.setReadOnly(True)
+            issues_textedit.setMaximumHeight(150)
+            layout.addWidget(QLabel("Issues and Recommendations:"))
+            layout.addWidget(issues_textedit)
+        
+        # Action buttons
+        button_layout = QHBoxLayout()
+        
+        # Test icon button
+        test_btn = QPushButton("Test Icon Extraction")
+        test_btn.clicked.connect(lambda: self._test_icon_extraction(selected_app.path))
+        button_layout.addWidget(test_btn)
+        
+        # Clear cache button
+        clear_cache_btn = QPushButton("Clear Icon Cache")
+        clear_cache_btn.clicked.connect(self._clear_icon_cache)
+        button_layout.addWidget(clear_cache_btn)
+        
+        # Refresh button
+        refresh_btn = QPushButton("Refresh App Grid")
+        refresh_btn.clicked.connect(lambda: self._refresh_app_grid())
+        button_layout.addWidget(refresh_btn)
+        
+        # Close button
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        button_layout.addWidget(close_btn)
+        
+        layout.addLayout(button_layout)
+        
+        dialog.exec()
+    
+    def _test_icon_extraction(self, file_path: str):
+        """Test icon extraction for a specific file."""
+        try:
+            # Test different methods
+            methods = [
+                ("Basic extraction", lambda: IconExtractor.extract_icon(file_path, 48)),
+                ("Multi-size extraction", lambda: IconExtractor.extract_icon_multi_size(file_path, [32, 48, 64])),
+                ("High-quality scaling", lambda: IconExtractor.create_high_quality_icon(
+                    IconExtractor.extract_icon_multi_size(file_path, [32, 48, 64]), 48)),
+                ("Quality-aware extraction", lambda: IconExtractor.extract_icon_with_quality(file_path, 48))
+            ]
+            
+            results = []
+            for method_name, method_func in methods:
+                try:
+                    icon = method_func()
+                    if icon and not icon.isNull():
+                        sizes = icon.availableSizes()
+                        results.append(f"✓ {method_name}: {len(sizes)} sizes available")
+                    else:
+                        results.append(f"✗ {method_name}: Failed")
+                except Exception as e:
+                    results.append(f"✗ {method_name}: Error - {str(e)}")
+            
+            # Show results
+            result_text = "Icon extraction test results:\n\n" + "\n".join(results)
+            QMessageBox.information(self, "Icon Test Results", result_text)
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Test Error", f"Error testing icon extraction:\n{str(e)}")
+    
+    def _clear_icon_cache(self):
+        """Clear the icon cache."""
+        try:
+            IconExtractor.clear_cache()
+            QMessageBox.information(self, "Cache Cleared", "Icon cache has been cleared successfully.")
+        except Exception as e:
+            QMessageBox.warning(self, "Cache Error", f"Error clearing cache:\n{str(e)}")
+    
+    def _refresh_app_grid(self):
+        """Refresh the app grid to show updated icons."""
+        try:
+            self.app_grid.populate(self.apps)
+            QMessageBox.information(self, "Refresh Complete", "App grid has been refreshed with updated icons.")
+        except Exception as e:
+            QMessageBox.warning(self, "Refresh Error", f"Error refreshing app grid:\n{str(e)}")
+
+    def _apply_icon_settings_dialog(self, dialog, high_quality, dpi_aware, cache_enabled, cache_size, scaling_method):
+        """Apply the icon quality settings from the dialog."""
+        self.icon_quality_settings.update({
+            'use_high_quality_scaling': high_quality,
+            'use_dpi_aware_scaling': dpi_aware,
+            'cache_enabled': cache_enabled,
+            'cache_size_limit': cache_size,
+            'fallback_scaling_method': scaling_method
+        })
+        
+        # Apply the new settings
+        self._apply_icon_quality_settings()
+        
+        # Clear the icon cache to force regeneration with new settings
+        IconExtractor.clear_cache()
+        
+        # Refresh the app grid to show icons with new quality settings
+        self.app_grid.populate(self.apps)
+        
+        dialog.accept()
 
     def _clear_default_ui(self):
         """Clear the default UI elements from MainWindowBase."""
@@ -696,7 +1422,8 @@ class LauncherWindow(MainWindowBase):
         icon_label = QLabel()
         icon = QIcon("template_app/assets/icons/icon.png")
         if not icon.isNull():
-            icon_label.setPixmap(icon.pixmap(32, 32))
+            # Use high-quality scaling for the header icon
+            icon_label.setPixmap(icon.pixmap(32, 32, QIcon.Mode.Normal, QIcon.State.Off))
         else:
             # Fallback if icon not found
             icon = QIcon("_internal\template_app\assets\icons")
@@ -787,7 +1514,7 @@ class LauncherWindow(MainWindowBase):
         # Control buttons area
         controls_widget = QWidget()
         controls_layout = QHBoxLayout(controls_widget)
-        controls_layout.setContentsMargins(0, 0, 10, 0)
+        controls_layout.setContentsMargins(10, 0, 10, 0)
         
         self.btn_add = QPushButton("Add")
         self.btn_add.setFixedWidth(80)
@@ -835,30 +1562,61 @@ class LauncherWindow(MainWindowBase):
             }
         """)
         
-        self.btn_more = QPushButton("More Options")
+        self.btn_more = QPushButton("Options")
+        self.btn_more.setFixedWidth(80)
+        self.btn_more.setFixedHeight(35)
         self.btn_more.clicked.connect(self.on_more_menu)
         self.btn_more.setStyleSheet("""
             QPushButton {
-                background-color: #6c757d;
-                color: white;
-                border: none;
-                padding: 10px 20px;
+                background-color: white;
+                color: #333333;
+                border: 1px solid #ddd;
+                padding: 4px;
                 border-radius: 6px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #5a6268;
+                background-color: #f8f9fa;
+                border-color: #adb5bd;
             }
             QPushButton:pressed {
-                background-color: #495057;
+                background-color: #e9ecef;
+                border-color: #6c757d;
             }
         """)
-        
+
+        # Add close button
+        self.btn_close = QPushButton("Close")
+        self.btn_close.setFixedWidth(80)
+        self.btn_close.setFixedHeight(35)
+        self.btn_close.clicked.connect(self.close)
+        self.btn_close.setStyleSheet("""
+            QPushButton {
+                background-color: white;
+                color: #333333;
+                border: 1px solid #ddd;
+                padding: 4px;
+                border-radius: 6px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #f8f9fa;
+                border-color: #adb5bd;
+            }
+            QPushButton:pressed {
+                background-color: #e9ecef;
+                border-color: #6c757d;
+            }
+        """)
+
+        controls_layout.addWidget(self.btn_more)
         controls_layout.addStretch()
         controls_layout.addWidget(self.btn_add)
         controls_layout.addSpacing(5)
         controls_layout.addWidget(self.btn_run)
-        #controls_layout.addWidget(self.btn_more)
+        controls_layout.addSpacing(5)
+        controls_layout.addWidget(self.btn_close)
+        
         
         # Add to splitter
         splitter.addWidget(self.app_grid)
@@ -928,14 +1686,15 @@ class LauncherWindow(MainWindowBase):
 
     def on_add_files(self) -> None:
         """Add new files to the launcher."""
-        start_dir = os.path.expandvars(r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs")
-        if not os.path.exists(start_dir):
-            start_dir = os.path.expanduser("~")
+        # Use Desktop as default location instead of Start Menu Programs
+        desktop_dir = os.path.expandvars(r"%USERPROFILE%\Desktop")
+        if not os.path.exists(desktop_dir):
+            desktop_dir = os.path.expanduser("~")
             
         paths, _ = QFileDialog.getOpenFileNames(
             self, 
             "Select files to pin", 
-            start_dir,
+            desktop_dir,
             "All Files (*.*)"
         )
         
@@ -951,14 +1710,15 @@ class LauncherWindow(MainWindowBase):
 
     def on_add_folder(self) -> None:
         """Add a folder to the launcher."""
-        start_dir = os.path.expandvars(r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs")
-        if not os.path.exists(start_dir):
-            start_dir = os.path.expanduser("~")
+        # Use Desktop as default location instead of Start Menu Programs
+        desktop_dir = os.path.expandvars(r"%USERPROFILE%\Desktop")
+        if not os.path.exists(desktop_dir):
+            desktop_dir = os.path.expanduser("~")
             
         folder_path = QFileDialog.getExistingDirectory(
             self,
             "Select folder to pin",
-            start_dir
+            desktop_dir
         )
         
         if not folder_path:
@@ -1024,6 +1784,10 @@ class LauncherWindow(MainWindowBase):
         
         add_files_action = menu.addAction("Add Files...")
         add_folder_action = menu.addAction("Add Folder...")
+        menu.addSeparator()
+        icon_settings_action = menu.addAction("Icon Quality Settings...")
+        icon_diagnostics_action = menu.addAction("Icon Diagnostics...")
+        menu.addSeparator()
         quit_action = menu.addAction("Exit")
         
         # Position menu near the button
@@ -1034,6 +1798,10 @@ class LauncherWindow(MainWindowBase):
             self.on_add_files()
         elif action == add_folder_action:
             self.on_add_folder()
+        elif action == icon_settings_action:
+            self._show_icon_quality_settings()
+        elif action == icon_diagnostics_action:
+            self._show_icon_diagnostics()
         elif action == quit_action:
             QApplication.quit()
 
@@ -1091,6 +1859,8 @@ class LauncherWindow(MainWindowBase):
             open_loc_action = menu.addAction("Open location")
         
         rename_action = menu.addAction("Rename")
+        menu.addSeparator()
+        icon_diagnostics_action = menu.addAction("Icon Diagnostics...")
         remove_action = menu.addAction("Unpin")
         
         action = menu.exec(self.mapToGlobal(pos))
@@ -1102,6 +1872,8 @@ class LauncherWindow(MainWindowBase):
                 self.open_location(app.path)
             elif action == rename_action:
                 self.rename_app(app)
+            elif action == icon_diagnostics_action:
+                self._show_icon_diagnostics()
             elif action == remove_action:
                 self.remove_app(app)
         else:
@@ -1160,12 +1932,12 @@ class LauncherWindow(MainWindowBase):
             if dir_path and dir_path != path:
                 normalized_dir = os.path.normpath(dir_path)
                 print(f"Opening parent directory: {normalized_dir}")
-                subprocess.Popen(["explorer", normalized_dir])
+                subprocess.Popen(["explorer", normalized_dir], creationflags=subprocess.CREATE_NO_WINDOW)
             else:
                 # If no parent directory (root drive), just open the item itself
                 normalized_path = os.path.normpath(path)
                 print(f"Opening item itself: {normalized_path}")
-                subprocess.Popen(["explorer", normalized_path])
+                subprocess.Popen(["explorer", normalized_path], creationflags=subprocess.CREATE_NO_WINDOW)
         except Exception as e:
             QMessageBox.warning(self, APP_NAME, f"Failed to open location:\n{e}")
 
@@ -1185,7 +1957,7 @@ class LauncherWindow(MainWindowBase):
                 print(f"Normalized path: {normalized_path}")
                 print(f"Opening folder in Explorer: {normalized_path}")
                 print(f"Explorer command: explorer \"{normalized_path}\"")
-                subprocess.Popen(["explorer", normalized_path])
+                subprocess.Popen(["explorer", normalized_path], creationflags=subprocess.CREATE_NO_WINDOW)
             else:
                 # Run file with proper working directory
                 target_dir = str(Path(path).parent)
@@ -1199,7 +1971,7 @@ class LauncherWindow(MainWindowBase):
                     "-Command",
                     f"Start-Process -FilePath '{path_ps}' -WorkingDirectory '{dir_ps}'"
                 ]
-                subprocess.Popen(ps_cmd)
+                subprocess.Popen(ps_cmd, creationflags=subprocess.CREATE_NO_WINDOW)
         except Exception as e:
             print(f"Error in run_path: {e}")
             QMessageBox.warning(self, APP_NAME, f"Failed to run:\n{e}")
@@ -1218,7 +1990,7 @@ class LauncherWindow(MainWindowBase):
             f"Start-Process -FilePath '{ps_path}' -WorkingDirectory '{ps_dir}' -Verb RunAs"
         ]
         try:
-            subprocess.Popen(ps_cmd)
+            subprocess.Popen(ps_cmd, creationflags=subprocess.CREATE_NO_WINDOW)
         except Exception as e:
             QMessageBox.warning(self, APP_NAME, f"Failed to run as admin:\n{e}")
 
