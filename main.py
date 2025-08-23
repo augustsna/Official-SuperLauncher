@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from PySide6.QtCore import Qt, QSize, QEvent, QFileInfo
-from PySide6.QtGui import QAction, QIcon, QPixmap, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, QSize, QFileInfo
+from PySide6.QtGui import QIcon, QPixmap, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QFileIconProvider, QGridLayout, QHBoxLayout, QInputDialog,
-    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox,
-    QPushButton, QSystemTrayIcon, QToolButton, QVBoxLayout, QWidget,
-    QFileDialog, QStyle, QSplitter
+    QLabel, QLineEdit, QMenu, QMessageBox,
+    QPushButton, QToolButton, QVBoxLayout, QWidget,
+    QFileDialog, QStyle, QSplitter, QScrollArea
 )
 
 from template_app.ui.main_window_base import MainWindowBase
@@ -194,38 +194,248 @@ class ConfigStore:
         self._write(data)
 
 
-class AppList(QWidget):
+class AppGrid(QWidget):
+    """Grid-based app display similar to Windows Start Menu."""
+    
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.list = QListWidget()
-        self.list.setIconSize(QSize(24, 24))
+        self.apps: List[AppItem] = []
+        self.app_widgets: List[QWidget] = []
+        self.columns = 6  # Default number of columns
+        
+        # Create scroll area for the grid
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        # Create content widget for the grid
+        self.content_widget = QWidget()
+        self.grid_layout = QGridLayout(self.content_widget)
+        self.grid_layout.setSpacing(15)
+        self.grid_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Set the content widget in the scroll area
+        self.scroll_area.setWidget(self.content_widget)
+        
+        # Main layout
         layout = QVBoxLayout(self)
-        layout.addWidget(self.list)
+        layout.addWidget(self.scroll_area)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Connect double-click and context menu
+        self.content_widget.mousePressEvent = self._handle_mouse_press
+        self.content_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.content_widget.customContextMenuRequested.connect(self._handle_context_menu)
+        
+        self._last_clicked_app = None
+
+    def set_columns(self, columns: int) -> None:
+        """Set the number of columns in the grid."""
+        self.columns = columns
+        if self.apps:
+            self.populate(self.apps)
 
     def populate(self, apps: List[AppItem]) -> None:
-        self.list.clear()
-        for app in apps:
-            # Extract icon using the new IconExtractor
-            icon = IconExtractor.extract_icon(app.path, 24)
-            item = QListWidgetItem(icon, app.display_name())
-            item.setData(Qt.UserRole, app)
-            self.list.addItem(item)
+        """Populate the grid with applications."""
+        self.apps = apps
+        self._clear_grid()
+        self._build_grid()
+
+    def _clear_grid(self) -> None:
+        """Clear all app widgets from the grid."""
+        for widget in self.app_widgets:
+            widget.deleteLater()
+        self.app_widgets.clear()
+        
+        # Clear the grid layout
+        while self.grid_layout.count():
+            child = self.grid_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+    def _build_grid(self) -> None:
+        """Build the grid layout with app widgets."""
+        for i, app in enumerate(self.apps):
+            row = i // self.columns
+            col = i % self.columns
+            
+            app_widget = self._create_app_widget(app)
+            self.grid_layout.addWidget(app_widget, row, col)
+            self.app_widgets.append(app_widget)
+
+    def _create_app_widget(self, app: AppItem) -> QWidget:
+        """Create a widget for a single app item."""
+        widget = QWidget()
+        widget.setFixedSize(80, 100)  # Fixed size for consistent grid
+        widget.setCursor(Qt.PointingHandCursor)
+        
+        # Store app data
+        widget.app_data = app
+        
+        # Layout for icon and text
+        layout = QVBoxLayout(widget)
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(8)
+        layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Icon
+        icon_label = QLabel()
+        icon = IconExtractor.extract_icon(app.path, 48)  # Larger icon for grid
+        icon_label.setPixmap(icon.pixmap(48, 48))
+        icon_label.setAlignment(Qt.AlignCenter)
+        icon_label.setStyleSheet("""
+            QLabel {
+                background: transparent;
+                border: none;
+            }
+        """)
+        
+        # Text label
+        text_label = QLabel(app.display_name())
+        text_label.setAlignment(Qt.AlignCenter)
+        text_label.setWordWrap(True)
+        text_label.setStyleSheet("""
+            QLabel {
+                color: white;
+                background: transparent;
+                border: none;
+                font-size: 11px;
+                font-weight: normal;
+                padding: 2px;
+            }
+        """)
+        
+        # Add widgets to layout
+        layout.addWidget(icon_label)
+        layout.addWidget(text_label)
+        
+        # Connect mouse events
+        widget.mousePressEvent = lambda event, w=widget: self._on_app_clicked(event, w)
+        widget.mouseDoubleClickEvent = lambda event, w=widget: self._on_app_double_clicked(event, w)
+        
+        return widget
+
+    def _on_app_clicked(self, event, widget):
+        """Handle single click on app widget."""
+        if event.button() == Qt.LeftButton:
+            self._last_clicked_app = widget.app_data
+            # Highlight the clicked widget
+            self._clear_highlights()
+            widget.setStyleSheet("""
+                QWidget {
+                    background-color: rgba(255, 255, 255, 0.1);
+                    border-radius: 8px;
+                }
+            """)
+
+    def _on_app_double_clicked(self, event, widget):
+        """Handle double click on app widget."""
+        if event.button() == Qt.LeftButton:
+            self._run_app(widget.app_data)
+
+    def _handle_mouse_press(self, event):
+        """Handle mouse press on the scroll area."""
+        if event.button() == Qt.LeftButton:
+            # Clear highlights when clicking empty space
+            self._clear_highlights()
+
+    def _handle_context_menu(self, pos):
+        """Handle context menu request."""
+        # Find which app was right-clicked
+        child = self.content_widget.childAt(pos)
+        while child and not hasattr(child, 'app_data'):
+            child = child.parent()
+        
+        if child and hasattr(child, 'app_data'):
+            self._show_context_menu(child.app_data, self.content_widget.mapToGlobal(pos))
+
+    def _show_context_menu(self, app: AppItem, global_pos):
+        """Show context menu for an app."""
+        menu = QMenu(self)
+        run_action = menu.addAction("Run")
+        run_admin_action = menu.addAction("Run as administrator")
+        open_loc_action = menu.addAction("Open location")
+        rename_action = menu.addAction("Rename")
+        remove_action = menu.addAction("Unpin")
+        
+        action = menu.exec(global_pos)
+        
+        if action == run_action:
+            self._run_app(app)
+        elif action == run_admin_action:
+            self._run_app_admin(app)
+        elif action == open_loc_action:
+            self._open_location(app)
+        elif action == rename_action:
+            self._rename_app(app)
+        elif action == remove_action:
+            self._remove_app(app)
+
+    def _clear_highlights(self):
+        """Clear all widget highlights."""
+        for widget in self.app_widgets:
+            widget.setStyleSheet("")
+
+    def _run_app(self, app: AppItem):
+        """Run an application."""
+        # Find the main window and call its method
+        main_window = self._find_main_window()
+        if main_window and hasattr(main_window, 'run_path'):
+            main_window.run_path(app.path)
+
+    def _run_app_admin(self, app: AppItem):
+        """Run an application as administrator."""
+        main_window = self._find_main_window()
+        if main_window and hasattr(main_window, 'run_path_admin'):
+            main_window.run_path_admin(app.path)
+
+    def _open_location(self, app: AppItem):
+        """Open the location of an application."""
+        main_window = self._find_main_window()
+        if main_window and hasattr(main_window, 'open_location'):
+            main_window.open_location(app.path)
+
+    def _rename_app(self, app: AppItem):
+        """Rename an application."""
+        main_window = self._find_main_window()
+        if main_window and hasattr(main_window, 'rename_app'):
+            main_window.rename_app(app)
+
+    def _remove_app(self, app: AppItem):
+        """Remove an application."""
+        main_window = self._find_main_window()
+        if main_window and hasattr(main_window, 'remove_app'):
+            main_window.remove_app(app)
+
+    def _find_main_window(self):
+        """Find the main launcher window by traversing up the widget hierarchy."""
+        widget = self
+        while widget:
+            if hasattr(widget, 'config') and hasattr(widget, 'apps'):
+                # This is the main window
+                return widget
+            widget = widget.parent()
+        return None
 
     def filter(self, text: str) -> None:
+        """Filter the grid based on search text."""
         text_lower = text.lower()
-        for i in range(self.list.count()):
-            item = self.list.item(i)
-            app: AppItem = item.data(Qt.UserRole)
+        for widget in self.app_widgets:
+            app = widget.app_data
             visible = text_lower in app.display_name().lower()
-            item.setHidden(not visible)
+            widget.setVisible(visible)
 
     def current_app(self) -> Optional[AppItem]:
-        item = self.list.currentItem()
-        return item.data(Qt.UserRole) if item else None
+        """Get the currently selected app."""
+        return self._last_clicked_app
 
     def app_at_pos(self, pos) -> Optional[AppItem]:
-        item = self.list.itemAt(pos)
-        return item.data(Qt.UserRole) if item else None
+        """Get app at a specific position."""
+        child = self.content_widget.childAt(pos)
+        while child and not hasattr(child, 'app_data'):
+            child = child.parent()
+        return child.app_data if child else None
 
 
 class LauncherWindow(MainWindowBase):
@@ -299,12 +509,34 @@ class LauncherWindow(MainWindowBase):
         # Create splitter for better layout control
         splitter = QSplitter(Qt.Vertical)
         
-        # App list area
-        self.app_list = AppList()
-        self.app_list.populate(self.apps)
-        self.app_list.list.itemDoubleClicked.connect(self.on_run_selected)
-        self.app_list.list.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.app_list.list.customContextMenuRequested.connect(self.open_context_menu)
+        # App grid area
+        self.app_grid = AppGrid()
+        self.app_grid.populate(self.apps)
+        # Don't connect context menu here - AppGrid handles it internally
+        
+        # Style the scroll area to match the dark theme
+        self.app_grid.scroll_area.setStyleSheet("""
+            QScrollArea {
+                background-color: transparent;
+                border: none;
+            }
+            QScrollBar:vertical {
+                background-color: #2d2d2d;
+                width: 12px;
+                border-radius: 6px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #555555;
+                border-radius: 6px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #777777;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
         
         # Control buttons area
         controls_widget = QWidget()
@@ -374,9 +606,9 @@ class LauncherWindow(MainWindowBase):
         controls_layout.addStretch()
         
         # Add to splitter
-        splitter.addWidget(self.app_list)
+        splitter.addWidget(self.app_grid)
         splitter.addWidget(controls_widget)
-        splitter.setSizes([400, 100])  # Give more space to app list
+        splitter.setSizes([400, 100])  # Give more space to app grid
         
         # Add splitter to body layout
         self.body_layout.addWidget(splitter)
@@ -387,8 +619,8 @@ class LauncherWindow(MainWindowBase):
         self.filter_edit.selectAll()
 
     def on_filter(self, text: str) -> None:
-        """Filter the app list based on search text."""
-        self.app_list.filter(text)
+        """Filter the app grid based on search text."""
+        self.app_grid.filter(text)
 
     def on_add(self) -> None:
         """Add new apps to the launcher."""
@@ -411,11 +643,11 @@ class LauncherWindow(MainWindowBase):
                 self.apps.append(AppItem(path=path))
         
         self.config.save_apps(self.apps)
-        self.app_list.populate(self.apps)
+        self.app_grid.populate(self.apps)
 
     def on_run_selected(self) -> None:
         """Run the currently selected app."""
-        app = self.app_list.current_app()
+        app = self.app_grid.current_app()
         if not app:
             return
         self.run_path(app.path)
@@ -437,7 +669,7 @@ class LauncherWindow(MainWindowBase):
 
     def open_context_menu(self, pos) -> None:
         """Open context menu for right-click on app items."""
-        app = self.app_list.app_at_pos(pos)
+        app = self.app_grid.app_at_pos(pos)
         if not app:
             return
             
@@ -448,7 +680,7 @@ class LauncherWindow(MainWindowBase):
         rename_action = menu.addAction("Rename")
         remove_action = menu.addAction("Unpin")
         
-        action = menu.exec(self.app_list.list.mapToGlobal(pos))
+        action = menu.exec(self.mapToGlobal(pos))
         
         if action == run_action:
             self.run_path(app.path)
@@ -474,7 +706,7 @@ class LauncherWindow(MainWindowBase):
             
         app.title = new_title.strip() or None
         self.config.save_apps(self.apps)
-        self.app_list.populate(self.apps)
+        self.app_grid.populate(self.apps)
 
     def remove_app(self, app: AppItem) -> None:
         """Remove an app from the launcher."""
@@ -489,7 +721,7 @@ class LauncherWindow(MainWindowBase):
         if reply == QMessageBox.Yes:
             self.apps = [a for a in self.apps if a.path != app.path]
             self.config.save_apps(self.apps)
-            self.app_list.populate(self.apps)
+            self.app_grid.populate(self.apps)
 
     def open_location(self, path: str) -> None:
         """Open the folder containing the selected item."""
@@ -536,59 +768,22 @@ class LauncherWindow(MainWindowBase):
             QMessageBox.warning(self, APP_NAME, f"Failed to run as admin:\n{e}")
 
 
-class TrayApp:
-    """System tray application wrapper."""
+class LauncherApp:
+    """Main launcher application."""
     
     def __init__(self):
         self.app = QApplication.instance() or QApplication(sys.argv)
         self.window = LauncherWindow()
-        self.tray = QSystemTrayIcon(self.window)
-        self.tray.setIcon(self.window.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
-        self.tray.setToolTip(APP_NAME)
-        
-        # Create tray menu
-        menu = QMenu()
-        act_toggle = QAction("Open Launcher", self.tray)
-        act_quit = QAction("Exit", self.tray)
-        
-        act_toggle.triggered.connect(self.toggle)
-        act_quit.triggered.connect(self.quit)
-        
-        menu.addAction(act_toggle)
-        menu.addSeparator()
-        menu.addAction(act_quit)
-        self.tray.setContextMenu(menu)
-        
-        # Connect tray activation
-        self.tray.activated.connect(self.on_tray_activated)
-        self.tray.show()
-
-    def toggle(self):
-        """Toggle window visibility."""
-        if self.window.isVisible():
-            self.window.hide()
-        else:
-            self.window.show()
-            self.window.raise_()
-            self.window.activateWindow()
-
-    def on_tray_activated(self, reason):
-        """Handle tray icon activation."""
-        if reason == QSystemTrayIcon.Trigger:
-            self.toggle()
-
-    def quit(self):
-        """Quit the application."""
-        QApplication.quit()
 
     def run(self):
         """Run the application."""
+        self.window.show()
         return self.app.exec()
 
 
 def main():
     """Main entry point."""
-    app = TrayApp()
+    app = LauncherApp()
     sys.exit(app.run())
 
 

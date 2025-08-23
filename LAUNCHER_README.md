@@ -9,7 +9,6 @@ A powerful, modern application launcher built with PySide6 that integrates seaml
 - **Smart Search**: Filter your pinned items with real-time search
 - **Icon Extraction**: Automatically extracts proper icons from Windows executables
 - **Context Menus**: Right-click for additional options (run as admin, open location, etc.)
-- **System Tray**: Minimize to system tray for quick access
 
 ### 🎯 Advanced Features
 - **Multiple Launch Methods**: Run normally, as administrator, or open file location
@@ -22,7 +21,8 @@ A powerful, modern application launcher built with PySide6 that integrates seaml
 - **Smart Icon Fallbacks**: Gracefully handles missing icons with intelligent defaults
 
 ### 🎨 Modern UI
-- **Responsive Design**: Adapts to different window sizes
+- **Grid Layout**: Applications displayed in a grid format similar to Windows Start Menu
+- **Responsive Design**: Adapts to different window sizes with automatic scrolling
 - **Professional Styling**: Modern button styles with hover effects
 - **Splitter Layout**: Efficient use of screen space
 - **Custom Styling**: Integrated with your existing template app styles
@@ -58,6 +58,10 @@ A powerful, modern application launcher built with PySide6 that integrates seaml
    - Double-click any item to launch it
    - Use keyboard shortcuts for quick access
 
+4. **Close the Application**:
+   - Use the X button to close the window
+   - Or press Ctrl+W to close
+
 ### Advanced Features
 
 #### Context Menu (Right-click)
@@ -67,10 +71,7 @@ A powerful, modern application launcher built with PySide6 that integrates seaml
 - **Rename**: Customize the display name
 - **Unpin**: Remove from launcher
 
-#### System Tray
-- **Minimize to tray**: Click the X button to minimize to system tray
-- **Quick access**: Click tray icon to show/hide the launcher
-- **Tray menu**: Right-click tray icon for options
+
 
 ### Configuration
 
@@ -88,8 +89,8 @@ You can also customize the main app settings in `launcher_config.json`.
 - **`LauncherWindow`**: Main window extending `MainWindowBase`
 - **`IconExtractor`**: Handles icon extraction with multiple fallback methods
 - **`ConfigStore`**: Manages persistent storage of pinned items
-- **`AppList`**: Displays and manages the list of pinned applications
-- **`TrayApp`**: System tray integration
+- **`AppGrid`**: Displays and manages the grid of pinned applications
+
 
 ### Integration with Template App
 
