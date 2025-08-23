@@ -6,10 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from PySide6.QtCore import Qt, QSize, QEvent
-from PySide6.QtGui import QAction, QIcon
+from PySide6.QtCore import Qt, QSize, QEvent, QFileInfo
+from PySide6.QtGui import QAction, QIcon, QPixmap
 from PySide6.QtWidgets import (
 	QApplication,
+	QFileIconProvider,
 	QGridLayout,
 	QHBoxLayout,
 	QInputDialog,
@@ -29,8 +30,133 @@ from PySide6.QtWidgets import (
 	QStyle,
 )
 
+# Icon extraction imports - with fallbacks
+try:
+	import win32gui
+	import win32con
+	import win32api
+	import win32ui
+	HAS_WIN32 = True
+except ImportError:
+	HAS_WIN32 = False
+
+try:
+	from PIL import Image
+	import tempfile
+	HAS_PIL = True
+except ImportError:
+	HAS_PIL = False
+
 
 APP_NAME = "PySuperLauncher"
+
+
+class IconExtractor:
+	"""Extract icons from Windows executables and files using multiple fallback methods."""
+	
+	@staticmethod
+	def extract_icon(file_path: str, size: int = 32) -> QIcon:
+		"""
+		Extract icon from file using best available method.
+		Falls back gracefully if advanced methods aren't available.
+		"""
+		file_path = str(Path(file_path).resolve())
+		
+		# Method 1: Try win32 API (most accurate, like SuperLauncher)
+		if HAS_WIN32:
+			icon = IconExtractor._extract_with_win32(file_path, size)
+			if icon and not icon.isNull():
+				return icon
+		
+		# Method 2: Try system icon association
+		icon = IconExtractor._extract_system_icon(file_path)
+		if icon and not icon.isNull():
+			return icon
+		
+		# Method 3: Default icon based on file extension
+		return IconExtractor._get_default_icon(file_path)
+	
+	@staticmethod
+	def _extract_with_win32(file_path: str, size: int = 32) -> Optional[QIcon]:
+		"""Extract icon using win32 API (equivalent to C# Icon.ExtractAssociatedIcon)."""
+		try:
+			# Use SHGetFileInfo to get the icon (simpler and more reliable)
+			import struct
+			
+			# Define constants
+			SHGFI_ICON = 0x000000100
+			SHGFI_LARGEICON = 0x000000000
+			SHGFI_SMALLICON = 0x000000001
+			
+			# Choose icon size
+			flags = SHGFI_ICON | (SHGFI_SMALLICON if size <= 24 else SHGFI_LARGEICON)
+			
+			# Get file info structure
+			ret, info = win32gui.SHGetFileInfo(file_path, 0, flags)
+			
+			if ret and info[0]:  # info[0] is the icon handle
+				# Convert icon handle to QIcon using QPixmap.fromWinHICON if available
+				try:
+					pixmap = QPixmap.fromWinHICON(info[0])
+					icon = QIcon(pixmap)
+					win32gui.DestroyIcon(info[0])  # Clean up the icon handle
+					return icon
+				except AttributeError:
+					# Fallback: QPixmap.fromWinHICON might not be available
+					win32gui.DestroyIcon(info[0])
+					
+		except Exception:
+			pass
+		
+		return None
+	
+	@staticmethod
+	def _extract_system_icon(file_path: str) -> QIcon:
+		"""Use Qt's built-in system icon extraction."""
+		try:
+			# Try to use system file icon
+			file_info = QFileInfo(file_path)
+			provider = QFileIconProvider()
+			return provider.icon(file_info)
+		except Exception:
+			return QIcon()
+	
+	@staticmethod
+	def _get_default_icon(file_path: str) -> QIcon:
+		"""Get default icon based on file extension."""
+		try:
+			app = QApplication.instance()
+			if not app:
+				return QIcon()
+			
+			ext = Path(file_path).suffix.lower()
+			
+			# Executable files
+			if ext in ['.exe', '.msi', '.bat', '.cmd', '.com']:
+				return app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+			
+			# Script files
+			elif ext in ['.py', '.pyw', '.js', '.vbs', '.ps1']:
+				return app.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+			
+			# Documents
+			elif ext in ['.txt', '.doc', '.docx', '.pdf', '.rtf']:
+				return app.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView)
+			
+			# Media files
+			elif ext in ['.mp3', '.mp4', '.avi', '.mov', '.wav']:
+				return app.style().standardIcon(QStyle.StandardPixmap.SP_DriveNetIcon)
+			
+			# Folders/shortcuts
+			elif ext in ['.lnk']:
+				return app.style().standardIcon(QStyle.StandardPixmap.SP_FileLinkIcon)
+			
+			# Default file icon
+			else:
+				return app.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+				
+		except Exception:
+			return QIcon()
 
 
 @dataclass
@@ -90,7 +216,9 @@ class AppList(QWidget):
 	def populate(self, apps: List[AppItem]) -> None:
 		self.list.clear()
 		for app in apps:
-			item = QListWidgetItem(QIcon(app.path), app.display_name())
+			# Extract icon using the new IconExtractor
+			icon = IconExtractor.extract_icon(app.path, 24)
+			item = QListWidgetItem(icon, app.display_name())
 			item.setData(Qt.UserRole, app)
 			self.list.addItem(item)
 

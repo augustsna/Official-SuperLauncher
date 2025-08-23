@@ -1,1 +1,6 @@
 PySide6>=6.4.0
+
+# Icon extraction dependencies (Windows only)
+# Install with: pip install pywin32 pillow
+pywin32>=306; sys_platform == "win32"
+pillow>=10.0.0

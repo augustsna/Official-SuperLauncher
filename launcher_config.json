@@ -1,0 +1,14 @@
+{
+  "app_settings": {
+    "window_title": "SuperLauncher",
+    "window_size": [800, 600],
+    "icon_path": "template_app/assets/icons/icon.png"
+  },
+  "launcher_settings": {
+    "default_start_directory": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs",
+    "icon_size": 24,
+    "auto_save": true,
+    "show_file_extensions": false,
+    "enable_hotkeys": true
+  }
+}
