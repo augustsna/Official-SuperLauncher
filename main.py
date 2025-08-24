@@ -1214,6 +1214,91 @@ class LauncherWindow(MainWindowBase):
         dialog.setModal(True)
         dialog.resize(400, 300)
         
+        # Apply dark theme styling to match the UI
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #333333;
+                color: #ffffff;
+                border: 1px solid #404040;
+                border-radius: 8px;
+            }
+            QLabel {
+                color: #ffffff;
+                background-color: transparent;
+            }
+            QCheckBox {
+                color: #ffffff;
+                background-color: transparent;
+                spacing: 8px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 1px solid #606060;
+                border-radius: 3px;
+                background-color: #2d2d2d;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #ffffff;
+                border-color: #ffffff;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #808080;
+            }
+            QSpinBox {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #606060;
+                border-radius: 4px;
+                padding: 4px;
+            }
+            QSpinBox:hover {
+                border-color: #808080;
+            }
+            QSpinBox:focus {
+                border-color: #ffffff;
+            }
+            QComboBox {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #606060;
+                border-radius: 4px;
+                padding: 4px;
+                min-width: 100px;
+            }
+            QComboBox:hover {
+                border-color: #808080;
+            }
+            QComboBox:focus {
+                border-color: #ffffff;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid #808080;
+            }
+            QPushButton {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #606060;
+                border-radius: 4px;
+                padding: 8px 16px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #363636;
+                border-color: #808080;
+            }
+            QPushButton:pressed {
+                background-color: #1a1a1a;
+            }
+        """)
+        
         layout = QVBoxLayout(dialog)
         
         # High quality scaling checkbox
@@ -1285,18 +1370,70 @@ class LauncherWindow(MainWindowBase):
         dialog.setModal(True)
         dialog.resize(600, 500)
         
+        # Apply dark theme styling to match the UI
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #333333;
+                color: #ffffff;
+                border: 1px solid #404040;
+                border-radius: 8px;
+            }
+            QLabel {
+                color: #ffffff;
+                background-color: transparent;
+            }
+            QTextEdit {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #606060;
+                border-radius: 4px;
+                padding: 8px;
+            }
+            QTextEdit:focus {
+                border-color: #ffffff;
+            }
+            QPushButton {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #606060;
+                border-radius: 4px;
+                padding: 8px 16px;
+                min-width: 120px;
+            }
+            QPushButton:hover {
+                background-color: #363636;
+                border-color: #808080;
+            }
+            QPushButton:pressed {
+                background-color: #1a1a1a;
+            }
+        """)
+        
         layout = QVBoxLayout(dialog)
         
         # App info
         app_info = QLabel(f"App: {selected_app.display_name()}\nPath: {selected_app.path}")
-        app_info.setStyleSheet("font-weight: bold; padding: 10px; background: #f0f0f0; border-radius: 5px;")
+        app_info.setStyleSheet("""
+            font-weight: bold; 
+            padding: 10px; 
+            background: #2d2d2d; 
+            border: 1px solid #404040;
+            border-radius: 5px;
+            color: #ffffff;
+        """)
         layout.addWidget(app_info)
         
         # File status
         status_text = f"File exists: {'✓' if diagnostics['file_exists'] else '✗'}\n"
         status_text += f"File type: {diagnostics['file_type']}"
         status_label = QLabel(status_text)
-        status_label.setStyleSheet("padding: 5px;")
+        status_label.setStyleSheet("""
+            padding: 5px; 
+            background: #2d2d2d; 
+            border: 1px solid #404040;
+            border-radius: 4px;
+            color: #ffffff;
+        """)
         layout.addWidget(status_label)
         
         # Extraction methods
@@ -1308,7 +1445,13 @@ class LauncherWindow(MainWindowBase):
             methods_text += "  ✗ None working\n"
         
         methods_label = QLabel(methods_text)
-        methods_label.setStyleSheet("padding: 5px;")
+        methods_label.setStyleSheet("""
+            padding: 5px; 
+            background: #2d2d2d; 
+            border: 1px solid #404040;
+            border-radius: 4px;
+            color: #ffffff;
+        """)
         layout.addWidget(methods_label)
         
         # Available sizes
@@ -1319,7 +1462,13 @@ class LauncherWindow(MainWindowBase):
             sizes_text += "  None\n"
         
         sizes_label = QLabel(sizes_text)
-        sizes_label.setStyleSheet("padding: 5px;")
+        sizes_label.setStyleSheet("""
+            padding: 5px; 
+            background: #2d2d2d; 
+            border: 1px solid #404040;
+            border-radius: 4px;
+            color: #ffffff;
+        """)
         layout.addWidget(sizes_label)
         
         # Errors and recommendations
