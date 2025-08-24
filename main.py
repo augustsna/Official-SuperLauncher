@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from PySide6.QtCore import Qt, QSize, QFileInfo, QMimeData
+from PySide6.QtCore import Qt, QSize, QFileInfo, QMimeData, QTimer
 from PySide6.QtGui import QIcon, QPixmap, QKeySequence, QShortcut, QDrag, QColor
 from PySide6.QtWidgets import (
     QApplication, QFileIconProvider, QGridLayout, QHBoxLayout, QInputDialog,
@@ -660,7 +660,7 @@ class AppGrid(QWidget):
         
         # Create content widget for the grid
         self.content_widget = QWidget()
-        self.content_widget.setStyleSheet("background-color: #f5f7fa;")
+        self.content_widget.setStyleSheet("background-color: #333333;")
         self.grid_layout = QGridLayout(self.content_widget)
         self.grid_layout.setSpacing(15)
         self.grid_layout.setContentsMargins(20, 20, 20, 20)
@@ -695,6 +695,8 @@ class AppGrid(QWidget):
         self.apps = apps
         self._clear_grid()
         self._build_grid()
+        # Ensure no widgets appear focused on startup
+        self._clear_highlights()
 
     def _clear_grid(self) -> None:
         """Clear all app widgets from the grid."""
@@ -725,6 +727,15 @@ class AppGrid(QWidget):
         widget.setCursor(Qt.PointingHandCursor)
         # Enable drag and drop
         widget.setAcceptDrops(True)
+        
+        # Apply dark theme styling to app widget
+        widget.setStyleSheet("""
+            QWidget {
+                background-color: #2d2d2d;
+                border-radius: 8px;
+                border: 1px solid #404040;
+            }
+        """)
         
         # Store app data
         widget.app_data = app
@@ -778,7 +789,7 @@ class AppGrid(QWidget):
         text_label.setWordWrap(True)
         text_label.setStyleSheet("""
             QLabel {
-                color: #2d3748;
+                color: #ffffff;
                 background: transparent;
                 border: none;
                 font-size: 11px;
@@ -822,15 +833,17 @@ class AppGrid(QWidget):
         """Handle double click on app widget."""
         if event.button() == Qt.LeftButton:
             self._run_app(widget.app_data)
+            # Clear highlights after 1 second delay
+            QTimer.singleShot(2500, self._clear_highlights)
 
     def _on_app_hover_enter(self, event, widget):
         """Handle mouse enter on app widget."""
         if not hasattr(widget, '_is_clicked') or not widget._is_clicked:
             widget.setStyleSheet("""
                 QWidget {
-                    background-color: rgba(45, 55, 72, 0.05);
+                    background-color: #353535;
                     border-radius: 8px;
-                    border: 1px solid rgba(45, 55, 72, 0.2);
+                    border: 1px solid #606060;
                 }
             """)
 
@@ -856,8 +869,9 @@ class AppGrid(QWidget):
         widget._is_clicked = True
         widget.setStyleSheet("""
             QWidget {
-                background-color: rgba(45, 55, 72, 0.1);
+                background-color: #383838;
                 border-radius: 8px;
+                border: 1px solid #606060;
             }
         """)
 
@@ -899,9 +913,9 @@ class AppGrid(QWidget):
             # Highlight drop target
             widget.setStyleSheet("""
                 QWidget {
-                    background-color: rgba(45, 55, 72, 0.15);
+                    background-color: #2d2d2d;
                     border-radius: 8px;
-                    border: 2px dashed rgba(45, 55, 72, 0.4);
+                    border: 2px dashed #404040;
                 }
             """)
 
@@ -914,8 +928,9 @@ class AppGrid(QWidget):
             # Restore clicked state styling
             widget.setStyleSheet("""
                 QWidget {
-                    background-color: rgba(45, 55, 72, 0.1);
+                    background-color: #2d2d2d;
                     border-radius: 8px;
+                    border: 1px solid #404040;
                 }
             """)
 
@@ -970,10 +985,10 @@ class AppGrid(QWidget):
         # Apply dark context menu styling
         menu.setStyleSheet("""
             QMenu {
-                background-color: #2d3748;
-                color: #e2e8f0;
-                border: 1px solid #4a5568;
-                border-radius: 0px;
+                background-color: #2a2a2a;
+                color: #ffffff;
+                border: 1px solid #404040;
+                border-radius: 6px;
                 padding: 4px 0px;
                 font-family: 'Segoe UI', Arial, sans-serif;
                 font-size: 12px;
@@ -985,16 +1000,16 @@ class AppGrid(QWidget):
                 border-radius: 0px;
             }
             QMenu::item:selected {
-                background-color: #4a5568;
+                background-color: #404040;
                 color: #ffffff;
             }
             QMenu::item:pressed {
-                background-color: #2d3748;
-                color: #e2e8f0;
+                background-color: #2a2a2a;
+                color: #ffffff;
             }
             QMenu::separator {
                 height: 1px;
-                background-color: #4a5568;
+                background-color: #404040;
                 margin: 4px 8px;
             }
         """)
@@ -1150,6 +1165,14 @@ class LauncherWindow(MainWindowBase):
         self.setMaximumSize(620, 620)
         self.resize(620, 620)
         
+        # Remove default window frame and create custom title bar
+        self.setWindowFlags(Qt.FramelessWindowHint)
+        
+        # Enable high-quality rendering attributes
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WA_OpaquePaintEvent, False)
+        
         # Clear default UI and build launcher interface
         self._clear_default_ui()
         self._build_launcher_ui()
@@ -1169,6 +1192,14 @@ class LauncherWindow(MainWindowBase):
         
         self._shortcut_icon_diagnostics = QShortcut(QKeySequence("Ctrl+D"), self)
         self._shortcut_icon_diagnostics.activated.connect(self._show_icon_diagnostics)
+        
+        # Apply dark theme to main window with transparent background for rounded corners
+        self.setStyleSheet("""
+            QWidget {
+                background-color: transparent;
+                color: #ffffff;
+            }
+        """)
     
     def _apply_icon_quality_settings(self):
         """Apply the current icon quality settings to the IconExtractor."""
@@ -1384,6 +1415,54 @@ class LauncherWindow(MainWindowBase):
             QMessageBox.information(self, "Refresh Complete", "App grid has been refreshed with updated icons.")
         except Exception as e:
             QMessageBox.warning(self, "Refresh Error", f"Error refreshing app grid:\n{str(e)}")
+    
+    def _title_bar_mouse_press(self, event):
+        """Handle mouse press on title bar for window dragging."""
+        if event.button() == Qt.LeftButton:
+            self._drag_start_pos = event.globalPosition().toPoint()
+            self._dragging = True
+    
+    def _title_bar_mouse_move(self, event):
+        """Handle mouse move on title bar for window dragging."""
+        if hasattr(self, '_dragging') and self._dragging:
+            delta = event.globalPosition().toPoint() - self._drag_start_pos
+            self.move(self.pos() + delta)
+            self._drag_start_pos = event.globalPosition().toPoint()
+    
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release to stop dragging."""
+        if hasattr(self, '_dragging'):
+            self._dragging = False
+    
+    def paintEvent(self, event):
+        """Custom paint event to draw rounded corners with enhanced anti-aliasing."""
+        from PySide6.QtGui import QPainter, QPainterPath, QBrush, QColor, QPen
+        from PySide6.QtCore import Qt
+        
+        painter = QPainter(self)
+        
+        # Enhanced anti-aliasing and rendering quality (PySide6 compatible)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        
+        # Create rounded rectangle path with 10px radius
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 10, 10)
+        
+        # Fill with dark background using high-quality brush
+        brush = QBrush(QColor("#333333"))
+        brush.setStyle(Qt.BrushStyle.SolidPattern)
+        painter.fillPath(path, brush)
+        
+        # Draw subtle border with anti-aliased pen
+        pen = QPen(QColor("#404040"))
+        pen.setWidth(1)
+        pen.setStyle(Qt.PenStyle.SolidLine)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.drawPath(path)
 
     def _apply_icon_settings_dialog(self, dialog, high_quality, dpi_aware, cache_enabled, cache_size, scaling_method):
         """Apply the icon quality settings from the dialog."""
@@ -1421,13 +1500,110 @@ class LauncherWindow(MainWindowBase):
 
     def _build_launcher_ui(self):
         """Build the launcher-specific user interface."""
+        
+        # Custom title bar
+        title_bar = QWidget()
+        title_bar.setFixedHeight(40)
+        title_bar.setStyleSheet("""
+            QWidget {
+                background-color: transparent;
+                border: none;
+            }
+        """)
+        
+        title_bar_layout = QHBoxLayout(title_bar)
+        title_bar_layout.setContentsMargins(10, 0, 0, 0)
+        title_bar_layout.setSpacing(0)
+        
+        # App icon and title on the left
+        title_info = QWidget()
+        title_info_layout = QHBoxLayout(title_info)
+        title_info_layout.setContentsMargins(0, 0, 0, 0)
+        title_info_layout.setSpacing(8)
+        
+        # App icon
+        app_icon = QLabel()
+        icon = QIcon("template_app/assets/icons/icon.png")
+        if not icon.isNull():
+            app_icon.setPixmap(icon.pixmap(20, 20))
+        app_icon.setStyleSheet("background: transparent; border: none;")
+        
+        # App title
+        app_title = QLabel(APP_NAME)
+        app_title.setStyleSheet("""
+            QLabel {
+                color: #ffffff;
+                font-size: 14px;
+                font-weight: bold;
+                background: transparent;
+                border: none;
+            }
+        """)
+        
+        title_info_layout.addWidget(app_icon)
+        title_info_layout.addWidget(app_title)
+        title_info_layout.addStretch()
+        
+        # Window control buttons on the right
+        controls_container = QWidget()
+        controls_container.setStyleSheet("background: transparent; border: none;")
+        controls_layout = QHBoxLayout(controls_container)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(5)
+        
+        # Minimize button
+        btn_minimize = QPushButton("─")
+        btn_minimize.setFixedSize(30, 30)
+        btn_minimize.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #ffffff;
+                border: none;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #404040;
+                border-radius: 4px;
+            }
+        """)
+        btn_minimize.clicked.connect(self.showMinimized)
+        
+        # Close button
+        btn_close_title = QPushButton("×")
+        btn_close_title.setFixedSize(30, 30)
+        btn_close_title.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #ffffff;
+                border: none;
+                font-size: 18px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #e81123;
+                border-radius: 4px;
+            }
+        """)
+        btn_close_title.clicked.connect(self.close)
+        
+        controls_layout.addWidget(btn_minimize)
+        controls_layout.addWidget(btn_close_title)
+        
+        # Add widgets to title bar
+        title_bar_layout.addWidget(title_info)
+        title_bar_layout.addWidget(controls_container)
+        
         # Header: Title and search
         # Create title container with icon and text
         title_container = QWidget()
-        title_layout = QHBoxLayout(title_container)
-        title_layout.setContentsMargins(0, 0, 0, 0)
-        title_layout.setSpacing(0)
-        title_layout.setAlignment(Qt.AlignCenter)
+        title_container.setStyleSheet("""
+            QWidget {
+                background-color: transparent;
+                border: none;
+            }
+        """)
+        
         
         # Add rocket icon
         icon_label = QLabel()
@@ -1465,16 +1641,21 @@ class LauncherWindow(MainWindowBase):
                 font-size: 24px; 
                 font-weight: bold; 
                 padding: 10px; 
-                color: #333333;
+                color: #ffffff;
                 background-color: transparent;
             }
         """)
         title_label.setAlignment(Qt.AlignCenter)
         
         # Add icon and title to layout
-        title_layout.addWidget(icon_label)
-        title_layout.addWidget(title_label)
+        #title_layout = QHBoxLayout(title_container)
+        #title_layout.setContentsMargins(0, 0, 0, 0)
+        #title_layout.setSpacing(0)
+        #title_layout.setAlignment(Qt.AlignCenter)
+        #title_layout.addWidget(icon_label)
+        #title_layout.addWidget(title_label)
         
+        # Add search box below title
         self.filter_edit = QLineEdit()
         self.filter_edit.setFixedHeight(30)
         self.filter_edit.setFixedWidth(250)
@@ -1482,29 +1663,50 @@ class LauncherWindow(MainWindowBase):
         self.filter_edit.textChanged.connect(self.on_filter)
         self.filter_edit.setStyleSheet("""
             QLineEdit {
-                padding: 4px;
-                border: 1px solid #ddd;
-                border-radius: 6px;
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #404040;
+                border-radius: 8px;
+                padding: 8px 16px;
                 font-size: 14px;
                 margin: 0 20px;
+            }
+            QLineEdit:focus {
+                border-color: #404040;
+            }
+            QLineEdit::placeholder {
+                color: #808080;
             }
         """)
         
         # Create a container widget for the header content
         header_content = QWidget()
+        header_content.setStyleSheet("""
+            QWidget {
+                background-color: transparent;
+                border: none;
+            }
+        """)
         header_content_layout = QVBoxLayout(header_content)
         header_content_layout.setContentsMargins(0, 10, 0, 0)
         header_content_layout.setSpacing(10)
         
         # Add title and search box vertically
-        header_content_layout.addWidget(title_container)
-        #header_content_layout.addWidget(self.filter_edit, alignment=Qt.AlignCenter)
+        #header_content_layout.addWidget(title_container)
+        header_content_layout.addWidget(self.filter_edit, alignment=Qt.AlignCenter)
         
         # Add the header content to the main header layout
         self.header_layout.addWidget(header_content)
         
         # Increase header height to accommodate title and search box
         self.header_widget.setFixedHeight(100)
+        
+        # Add title bar to the very top of the main layout
+        self.layout().insertWidget(0, title_bar)
+        
+        # Enable window dragging from title bar
+        title_bar.mousePressEvent = self._title_bar_mouse_press
+        title_bar.mouseMoveEvent = self._title_bar_mouse_move
         
 
         # Body: App list and controls
@@ -1516,24 +1718,24 @@ class LauncherWindow(MainWindowBase):
         self.app_grid.populate(self.apps)
         # Don't connect context menu here - AppGrid handles it internally
         
-        # Style the scroll area to match the light theme
+        # Style the scroll area to match the dark theme
         self.app_grid.scroll_area.setStyleSheet("""
             QScrollArea {
-                background-color: #f5f7fa;
+                background-color: #333333;
                 border: none;
             }
             QScrollBar:vertical {
-                background-color: #e1e5e9;
+                background-color: #2d2d2d;
                 width: 12px;
                 border-radius: 6px;
             }
             QScrollBar::handle:vertical {
-                background-color: #b8c0c8;
+                background-color: #606060;
                 border-radius: 6px;
                 min-height: 20px;
             }
             QScrollBar::handle:vertical:hover {
-                background-color: #9aa3ad;
+                background-color: #808080;
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0px;
@@ -1542,6 +1744,12 @@ class LauncherWindow(MainWindowBase):
         
         # Control buttons area
         controls_widget = QWidget()
+        controls_widget.setStyleSheet("""
+            QWidget {
+                background-color: #333333;
+                border: none;
+            }
+        """)
         controls_layout = QHBoxLayout(controls_widget)
         controls_layout.setContentsMargins(10, 0, 10, 0)
         
@@ -1551,20 +1759,19 @@ class LauncherWindow(MainWindowBase):
         self.btn_add.clicked.connect(self.on_add)
         self.btn_add.setStyleSheet("""
             QPushButton {
-                background-color: white;
-                color: #333333;
-                border: 1px solid #ddd;
-                padding: 4px;
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #404040;
+                padding: 8px 16px;
                 border-radius: 6px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #f8f9fa;
-                border-color: #adb5bd;
+                background-color: #363636;
+                border-color: #606060;
             }
             QPushButton:pressed {
-                background-color: #e9ecef;
-                border-color: #6c757d;
+                background-color: #1a1a1a;
             }
         """)
         
@@ -1574,20 +1781,19 @@ class LauncherWindow(MainWindowBase):
         self.btn_run.setFixedHeight(35)
         self.btn_run.setStyleSheet("""
             QPushButton {
-                background-color: white;
-                color: #333333;
-                border: 1px solid #ddd;
-                padding: 4px;
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #404040;
+                padding: 8px 16px;
                 border-radius: 6px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #f8f9fa;
-                border-color: #adb5bd;
+                background-color: #363636;
+                border-color: #606060;
             }
             QPushButton:pressed {
-                background-color: #e9ecef;
-                border-color: #6c757d;
+                background-color: #1a1a1a;
             }
         """)
         
@@ -1597,20 +1803,19 @@ class LauncherWindow(MainWindowBase):
         self.btn_more.clicked.connect(self.on_more_menu)
         self.btn_more.setStyleSheet("""
             QPushButton {
-                background-color: white;
-                color: #333333;
-                border: 1px solid #ddd;
-                padding: 4px;
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #404040;
+                padding: 8px 16px;
                 border-radius: 6px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #f8f9fa;
-                border-color: #adb5bd;
+                background-color: #363636;
+                border-color: #606060;
             }
             QPushButton:pressed {
-                background-color: #e9ecef;
-                border-color: #6c757d;
+                background-color: #1a1a1a;
             }
         """)
 
@@ -1621,20 +1826,19 @@ class LauncherWindow(MainWindowBase):
         self.btn_close.clicked.connect(self.close)
         self.btn_close.setStyleSheet("""
             QPushButton {
-                background-color: white;
-                color: #333333;
-                border: 1px solid #ddd;
-                padding: 4px;
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #404040;
+                padding: 8px 16px;
                 border-radius: 6px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #f8f9fa;
-                border-color: #adb5bd;
+                background-color: #383838;
+                border-color: #606060;
             }
             QPushButton:pressed {
-                background-color: #e9ecef;
-                border-color: #6c757d;
+                background-color: #1a1a1a;
             }
         """)
 
@@ -1672,9 +1876,9 @@ class LauncherWindow(MainWindowBase):
         # Apply dark context menu styling
         menu.setStyleSheet("""
             QMenu {
-                background-color: #2d3748;
-                color: #e2e8f0;
-                border: 1px solid #4a5568;
+                background-color: #2a2a2a;
+                color: #ffffff;
+                border: 1px solid #404040;
                 border-radius: 6px;
                 padding: 4px 0px;
                 font-family: 'Segoe UI', Arial, sans-serif;
@@ -1687,16 +1891,16 @@ class LauncherWindow(MainWindowBase):
                 border-radius: 0px;
             }
             QMenu::item:selected {
-                background-color: #4a5568;
+                background-color: #404040;
                 color: #ffffff;
             }
             QMenu::item:pressed {
-                background-color: #2d3748;
-                color: #e2e8f0;
+                background-color: #2a2a2a;
+                color: #ffffff;
             }
             QMenu::separator {
                 height: 1px;
-                background-color: #4a5568;
+                background-color: #404040;
                 margin: 4px 8px;
             }
         """)
@@ -1774,6 +1978,8 @@ class LauncherWindow(MainWindowBase):
         if not app:
             return
         self.run_path(app.path)
+        # Clear highlights after 1 second delay
+        QTimer.singleShot(2500, self.app_grid._clear_highlights)
 
     def on_more_menu(self) -> None:
         """Show the more options menu."""
@@ -1782,9 +1988,9 @@ class LauncherWindow(MainWindowBase):
         # Apply dark context menu styling
         menu.setStyleSheet("""
             QMenu {
-                background-color: #2d3748;
-                color: #e2e8f0;
-                border: 1px solid #4a5568;
+                background-color: #2a2a2a;
+                color: #ffffff;
+                border: 1px solid #404040;
                 border-radius: 6px;
                 padding: 4px 0px;
                 font-family: 'Segoe UI', Arial, sans-serif;
@@ -1797,16 +2003,16 @@ class LauncherWindow(MainWindowBase):
                 border-radius: 0px;
             }
             QMenu::item:selected {
-                background-color: #4a5568;
+                background-color: #404040;
                 color: #ffffff;
             }
             QMenu::item:pressed {
-                background-color: #2d3748;
-                color: #e2e8f0;
+                background-color: #2a2a2a;
+                color: #ffffff;
             }
             QMenu::separator {
                 height: 1px;
-                background-color: #4a5568;
+                background-color: #404040;
                 margin: 4px 8px;
             }
         """)
@@ -1845,9 +2051,9 @@ class LauncherWindow(MainWindowBase):
         # Apply dark context menu styling
         menu.setStyleSheet("""
             QMenu {
-                background-color: #2d3748;
-                color: #e2e8f0;
-                border: 1px solid #4a5568;
+                background-color: #2a2a2a;
+                color: #ffffff;
+                border: 1px solid #404040;
                 border-radius: 6px;
                 padding: 4px 0px;
                 font-family: 'Segoe UI', Arial, sans-serif;
@@ -1860,16 +2066,16 @@ class LauncherWindow(MainWindowBase):
                 border-radius: 0px;
             }
             QMenu::item:selected {
-                background-color: #4a5568;
+                background-color: #404040;
                 color: #ffffff;
             }
             QMenu::item:pressed {
-                background-color: #2d3748;
-                color: #e2e8f0;
+                background-color: #2a2a2a;
+                color: #ffffff;
             }
             QMenu::separator {
                 height: 1px;
-                background-color: #4a5568;
+                background-color: #404040;
                 margin: 4px 8px;
             }
         """)
