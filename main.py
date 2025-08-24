@@ -2365,13 +2365,15 @@ TRAY ICON:
     def _save_current_position(self):
         """Save the current window position and size."""
         try:
-            # Use frameGeometry() to account for window decorations (title bar, borders)
+            # Use frameGeometry() for correct screen-relative position
+            # Use geometry() for correct client area size (without decorations)
             frame_geometry = self.frameGeometry()
+            client_geometry = self.geometry()
             self.config.save_window_position(
                 frame_geometry.x(),
                 frame_geometry.y(),
-                frame_geometry.width(),
-                frame_geometry.height()
+                client_geometry.width(),
+                client_geometry.height()
             )
         except Exception as e:
             print(f"Error saving window position: {e}")
