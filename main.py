@@ -1373,7 +1373,7 @@ class LauncherWindow(MainWindowBase):
         self._shortcut_add = QShortcut(QKeySequence("Ctrl+N"), self)
         self._shortcut_add.activated.connect(self.on_add)
         
-        self._shortcut_run = QShortcut(QKeySequence("Ctrl+R"), self)
+        self._shortcut_run = QShortcut(QKeySequence("R"), self)
         self._shortcut_run.activated.connect(self.on_run_selected)
         
         self._shortcut_filter = QShortcut(QKeySequence("Ctrl+F"), self)
@@ -1589,6 +1589,11 @@ class LauncherWindow(MainWindowBase):
             cache_cb.isChecked(), cache_spin.value(), scaling_combo.currentText()
         ))
         cancel_btn.clicked.connect(dialog.reject)
+        
+        # Add Ctrl+W shortcut to close dialog
+        from PySide6.QtGui import QShortcut, QKeySequence
+        close_shortcut = QShortcut(QKeySequence("Ctrl+W"), dialog)
+        close_shortcut.activated.connect(dialog.reject)
         
         dialog.exec()
     
@@ -1818,6 +1823,141 @@ class LauncherWindow(MainWindowBase):
         
         layout.addLayout(button_layout)
         
+        # Add Ctrl+W shortcut to close dialog
+        from PySide6.QtGui import QShortcut, QKeySequence
+        close_shortcut = QShortcut(QKeySequence("Ctrl+W"), dialog)
+        close_shortcut.activated.connect(dialog.accept)
+        
+        dialog.exec()
+    
+    def _show_keyboard_shortcuts(self):
+        """Show a dialog displaying all available keyboard shortcuts."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Keyboard Shortcuts")
+        dialog.setModal(True)
+        dialog.resize(500, 400)
+        
+        # Import and apply dark dialog styling from styles.py
+        from template_app.styles import apply_dark_title_bar_theme, get_dark_dialog_stylesheet
+        
+        # Apply dark title bar theme for Windows
+        apply_dark_title_bar_theme(dialog)
+        
+        # Apply dark dialog stylesheet
+        dialog.setStyleSheet(get_dark_dialog_stylesheet())
+        
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(16)
+        layout.setContentsMargins(24, 24, 24, 24)
+        
+        # Title
+        title_label = QLabel("SuperLauncher Keyboard Shortcuts")
+        title_label.setStyleSheet("""
+            font-size: 18px; 
+            font-weight: bold; 
+            color: #ffffff; 
+            padding: 10px 0px;
+        """)
+        layout.addWidget(title_label, alignment=Qt.AlignCenter)
+        
+        # Shortcuts text area
+        shortcuts_text = QTextEdit()
+        shortcuts_text.setReadOnly(True)
+        shortcuts_text.setPlainText("""
+MAIN WINDOW SHORTCUTS:
+• Ctrl+N          - Add new application
+• R               - Run selected application
+• Ctrl+F          - Focus search/filter box
+• Ctrl+I          - Open Icon Quality Settings
+• Ctrl+D          - Open Icon Diagnostics
+• Ctrl+T          - Refresh Dark Theme
+• Ctrl+W          - Close window
+
+DIALOG SHORTCUTS:
+• Ctrl+W          - Close dialog (in any dialog)
+• Enter           - Apply/Confirm (when focused on input fields)
+
+MOUSE & CONTEXT MENU:
+• Double-click    - Launch application
+• Right-click     - Open context menu
+• Drag & Drop     - Reorder apps or add new ones
+
+SEARCH & NAVIGATION:
+• Type in search  - Filter applications in real-time
+• Arrow keys     - Navigate through filtered results
+• Enter          - Launch selected app from search
+        """)
+        
+        # Apply modern scrollbar styling to the text edit
+        shortcuts_text.setStyleSheet("""
+            QTextEdit {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #404040;
+                border-radius: 6px;
+                padding: 12px;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 13px;
+                line-height: 1.4;
+            }
+            
+            QTextEdit QScrollBar:vertical {
+                background-color: rgba(45, 45, 45, 0.3);
+                width: 16px;
+                margin: 0px;
+                border-radius: 8px;
+                border: none;
+            }
+            
+            QTextEdit QScrollBar::handle:vertical {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #666666, stop:1 #777777);
+                border-radius: 8px;
+                min-height: 30px;
+                margin: 2px;
+                border: 2px solid transparent;
+            }
+            
+            QTextEdit QScrollBar::handle:vertical:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #777777, stop:1 #888888);
+                border: 2px solid #999999;
+            }
+            
+            QTextEdit QScrollBar::handle:vertical:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #888888, stop:1 #999999);
+                border: 2px solid #bbbbbb;
+            }
+            
+            QTextEdit QScrollBar::add-line:vertical, QTextEdit QScrollBar::sub-line:vertical {
+                height: 0px;
+                background: transparent;
+            }
+            
+            QTextEdit QScrollBar::add-page:vertical, QTextEdit QScrollBar::sub-page:vertical {
+                background: rgba(45, 45, 45, 0.1);
+            }
+        """)
+        
+        layout.addWidget(shortcuts_text)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        
+        button_layout.addStretch()
+        button_layout.addWidget(close_btn)
+        layout.addLayout(button_layout)
+        
+        # Add Ctrl+W shortcut to close dialog
+        from PySide6.QtGui import QShortcut, QKeySequence
+        close_shortcut = QShortcut(QKeySequence("Ctrl+W"), dialog)
+        close_shortcut.activated.connect(dialog.accept)
+        
         dialog.exec()
     
     def _test_icon_extraction(self, file_path: str):
@@ -1909,7 +2049,7 @@ class LauncherWindow(MainWindowBase):
                 # Set custom caption color (Windows 11 22H2+)
                 try:
                     # Dark gray color for caption
-                    caption_color = 0x002f2f2f  # RGB(47, 47, 47)
+                    caption_color = 0x00282828  # RGB(47, 47, 47)
                     ctypes.windll.dwmapi.DwmSetWindowAttribute(
                         hwnd, 
                         DWMWA_CAPTION_COLOR, 
@@ -1956,7 +2096,7 @@ class LauncherWindow(MainWindowBase):
                 palette = app.palette()
                 
                 # Set dark colors for title bar
-                palette.setColor(QPalette.ColorRole.Window, QColor("#2f2f2f"))
+                palette.setColor(QPalette.ColorRole.Window, QColor("#282828"))
                 palette.setColor(QPalette.ColorRole.WindowText, QColor("#ffffff"))
                 palette.setColor(QPalette.ColorRole.Base, QColor("#2d2d2d"))
                 palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#333333"))
@@ -2244,7 +2384,7 @@ class LauncherWindow(MainWindowBase):
         self.header_layout.addWidget(header_content)
         
         # Set header height to accommodate search box and icon size info
-        self.header_widget.setFixedHeight(100)
+        self.header_widget.setFixedHeight(80)
         
 
         # Body: App list and controls
@@ -2626,6 +2766,8 @@ class LauncherWindow(MainWindowBase):
         icon_settings_action = menu.addAction("Quality Settings")
         icon_diagnostics_action = menu.addAction("Icon Diagnostics")
         menu.addSeparator()
+        shortcuts_action = menu.addAction("Keyboard Shortcuts")
+        menu.addSeparator()
         refresh_theme_action = menu.addAction("Refresh Dark Theme")
         menu.addSeparator()        
 
@@ -2637,6 +2779,8 @@ class LauncherWindow(MainWindowBase):
             self._show_icon_quality_settings()
         elif action == icon_diagnostics_action:
             self._show_icon_diagnostics()
+        elif action == shortcuts_action:
+            self._show_keyboard_shortcuts()
         elif action == refresh_theme_action:
             self._refresh_dark_theme()
 
