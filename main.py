@@ -1363,9 +1363,6 @@ class LauncherWindow(MainWindowBase):
         self._clear_default_ui()
         self._build_launcher_ui()
         
-        # Connect window events
-        self._connect_window_events()
-        
         # Override base class margins to remove black border
         self.root_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -1401,9 +1398,6 @@ class LauncherWindow(MainWindowBase):
                 border: none;
             }
         """)
-        
-        # Connect window events
-        self._connect_window_events()
     
     def _apply_icon_quality_settings(self):
         """Apply the current icon quality settings to the IconExtractor."""
@@ -2160,6 +2154,9 @@ SEARCH & NAVIGATION:
             # Connect move event to save window position
             self.moveEvent = self._on_move
             
+            # Connect resize event to save window position
+            self.resizeEvent = self._on_resize
+            
             # Connect close event to save window position
             self.closeEvent = self._on_close
             
@@ -2182,6 +2179,16 @@ SEARCH & NAVIGATION:
         """Handle show event."""
         # Ensure dark theme is applied when window is shown
         self._apply_dark_title_bar_theme()
+        
+        # Save initial position after window is shown (if not already saved)
+        try:
+            if not hasattr(self, '_initial_position_saved'):
+                self._save_current_position()
+                self._initial_position_saved = True
+                print("Initial window position saved")
+        except Exception as e:
+            print(f"Error saving initial position: {e}")
+        
         super().showEvent(event)
     
     def _load_window_position(self):
@@ -2193,7 +2200,9 @@ SEARCH & NAVIGATION:
             width = position_data.get('width', 620)
             height = position_data.get('height', 620)
             
-            # Set window size
+            print(f"Loading window position: x={x}, y={y}, width={width}, height={height}")
+            
+            # Set window size first
             self.resize(width, height)
             
             # Set window position if coordinates are saved
@@ -2202,6 +2211,8 @@ SEARCH & NAVIGATION:
                 screen = QApplication.primaryScreen()
                 if screen:
                     screen_geometry = screen.geometry()
+                    print(f"Screen geometry: {screen_geometry}")
+                    
                     # Adjust position if window would be off-screen
                     if x < screen_geometry.left():
                         x = screen_geometry.left() + 50
@@ -2211,10 +2222,15 @@ SEARCH & NAVIGATION:
                         x = screen_geometry.right() - width - 50
                     if y + height > screen_geometry.bottom():
                         y = screen_geometry.bottom() - height - 50
-                
-                self.move(x, y)
+                    
+                    print(f"Final position: x={x}, y={y}")
+                    self.move(x, y)
+                else:
+                    print("No primary screen found, centering window")
+                    self._center_window_on_screen()
             else:
                 # Center window on screen if no position saved
+                print("No saved position, centering window")
                 self._center_window_on_screen()
                 
         except Exception as e:
@@ -2254,16 +2270,37 @@ SEARCH & NAVIGATION:
         
         super().moveEvent(event)
     
+    def _on_resize(self, event):
+        """Handle window resize event to save position and size."""
+        try:
+            # Save position and size after a short delay to avoid excessive saves during resizing
+            if hasattr(self, '_resize_save_timer'):
+                self._resize_save_timer.stop()
+            else:
+                from PySide6.QtCore import QTimer
+                self._resize_save_timer = QTimer()
+                self._resize_save_timer.setSingleShot(True)
+                self._resize_save_timer.timeout.connect(self._save_current_position)
+            
+            self._resize_save_timer.start(300)  # Save after 300ms of no resizing
+            
+        except Exception as e:
+            print(f"Error handling resize event: {e}")
+        
+        super().resizeEvent(event)
+    
     def _save_current_position(self):
         """Save the current window position and size."""
         try:
             geometry = self.geometry()
+            print(f"Saving window position: x={geometry.x()}, y={geometry.y()}, width={geometry.width()}, height={geometry.height()}")
             self.config.save_window_position(
                 geometry.x(),
                 geometry.y(),
                 geometry.width(),
                 geometry.height()
             )
+            print("Window position saved successfully")
         except Exception as e:
             print(f"Error saving window position: {e}")
     
