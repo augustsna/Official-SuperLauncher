@@ -3256,10 +3256,19 @@ class LauncherApp:
         print("Tray icon initialized successfully")
 
     def _toggle_window(self):
-        """Toggle window visibility."""
-        if self.window.isVisible():
+        """Toggle window visibility based on current state."""
+        # Check if window is Windows minimized
+        if self.window.windowState() == Qt.WindowMinimized:
+            # Window is Windows minimized - restore it directly without animation
+            self.window.setWindowState(Qt.WindowNoState)
+            self.window.raise_()
+            self.window.activateWindow()
+            print("Restored from Windows minimized state")
+        elif self.window.isVisible():
+            # Window is visible - hide it to tray with animation
             self._hide_window_to_tray_with_animation()
         else:
+            # Window is hidden in tray - show it with animation
             self._show_window_from_tray_with_animation()
     
     def _show_window_from_tray_with_animation(self):
@@ -3267,6 +3276,16 @@ class LauncherApp:
         try:
             # Mark that we're restoring from tray
             self.window._is_restoring_from_tray = True
+            
+            # Force window to normal state (not minimized)
+            if self.window.windowState() == Qt.WindowMinimized:
+                self.window.setWindowState(Qt.WindowNoState)
+                print("Forced window to normal state from minimized")
+            
+            # Ensure window is visible and active
+            if not self.window.isVisible():
+                self.window.show()
+                print("Window was hidden, now showing")
             
             # Set initial opacity to 0 (transparent)
             self.window.setWindowOpacity(0.0)
