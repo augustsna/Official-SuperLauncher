@@ -1,7 +1,10 @@
 {
   "app_settings": {
     "window_title": "SuperLauncher",
-    "window_size": [800, 600],
+    "window_size": [
+      800,
+      600
+    ],
     "icon_path": "template_app/assets/icons/icon.png"
   },
   "launcher_settings": {
@@ -10,5 +13,20 @@
     "auto_save": true,
     "show_file_extensions": false,
     "enable_hotkeys": true
+  },
+  "icon_quality_settings": {
+    "use_high_quality_scaling": true,
+    "use_dpi_aware_scaling": true,
+    "preferred_source_sizes": [
+      32,
+      48,
+      64,
+      128
+    ],
+    "fallback_scaling_method": "smooth",
+    "cache_enabled": true,
+    "cache_size_limit": 100,
+    "widget_size": 100,
+    "grid_columns": 5
   }
 }

@@ -65,7 +65,7 @@ class MainWindowBase(QWidget):
 
     def _init_window(self):
         self.setWindowTitle(self.app_settings.window_title)
-        self.setMinimumSize(760, 577)
+        self.setMinimumSize(400, 400)
         self.resize(*self.app_settings.window_size)
         apply_app_style(self)
 

@@ -118,7 +118,7 @@ class IconExtractor:
         """
         try:
             if sizes is None:
-                sizes = [16, 24, 32, 48, 64, 128, 256]  # Common icon sizes
+                sizes = [16, 24, 32, 48, 64, 128]  # Common icon sizes
             
             file_path = str(Path(file_path).resolve())
             
@@ -432,7 +432,7 @@ class IconExtractor:
         return {
             'use_high_quality_scaling': True,
             'use_dpi_aware_scaling': True,
-            'preferred_source_sizes': [32, 48, 64, 128, 256],
+            'preferred_source_sizes': [32, 48, 64, 128],
             'fallback_scaling_method': 'smooth',  # 'smooth', 'fast', 'best'
             'cache_enabled': True,
             'cache_size_limit': 100
@@ -641,6 +641,55 @@ class ConfigStore:
     def save_apps(self, apps: List[AppItem]) -> None:
         data = {"apps": [{"path": a.path, "title": a.title} for a in apps]}
         self._write(data)
+    
+    def load_icon_quality_settings(self) -> dict:
+        """Load icon quality settings from config file."""
+        data = self._read()
+        default_settings = {
+            'use_high_quality_scaling': True,
+            'use_dpi_aware_scaling': True,
+            'preferred_source_sizes': [32, 48, 64, 128],
+            'fallback_scaling_method': 'smooth',
+            'cache_enabled': True,
+            'cache_size_limit': 100,
+            'widget_size': 100,  # Default widget size (100x100)
+            'grid_columns': 5  # Default number of columns
+        }
+        
+        # If no icon quality settings exist, save the defaults
+        if 'icon_quality_settings' not in data:
+            data['icon_quality_settings'] = default_settings
+            self._write(data)
+        
+        return data.get('icon_quality_settings', default_settings)
+    
+    def save_icon_quality_settings(self, settings: dict) -> None:
+        """Save icon quality settings to config file."""
+        data = self._read()
+        data['icon_quality_settings'] = settings
+        self._write(data)
+    
+    def load_window_position(self) -> dict:
+        """Load window position and size from config file."""
+        data = self._read()
+        default_position = {
+            'x': None,  # None means center on screen
+            'y': None,
+            'width': 620,
+            'height': 620
+        }
+        return data.get('window_position', default_position)
+    
+    def save_window_position(self, x: int, y: int, width: int, height: int) -> None:
+        """Save window position and size to config file."""
+        data = self._read()
+        data['window_position'] = {
+            'x': x,
+            'y': y,
+            'width': width,
+            'height': height
+        }
+        self._write(data)
 
 
 class AppGrid(QWidget):
@@ -651,12 +700,101 @@ class AppGrid(QWidget):
         self.apps: List[AppItem] = []
         self.app_widgets: List[QWidget] = []
         self.columns = 5  # Default number of columns
+        self.icon_quality_settings = {}  # Store icon quality settings
         
         # Create scroll area for the grid
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        # Apply modern scrollbar styling to the grid scroll area
+        self.scroll_area.setStyleSheet("""
+            QScrollArea {
+                background-color: #333333;
+                border: none;
+                outline: none;
+            }
+            
+            /* Modern Vertical Scrollbar */
+            QScrollBar:vertical {
+                background-color: rgba(45, 45, 45, 0.3);
+                width: 16px;
+                margin: 0px;
+                border-radius: 8px;
+                border: none;
+            }
+            
+            QScrollBar::handle:vertical {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #666666, stop:1 #777777);
+                border-radius: 8px;
+                min-height: 30px;
+                margin: 2px;
+                border: 2px solid transparent;
+            }
+            
+            QScrollBar::handle:vertical:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #777777, stop:1 #888888);
+                border: 2px solid #999999;
+            }
+            
+            QScrollBar::handle:vertical:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #888888, stop:1 #999999);
+                border: 2px solid #bbbbbb;
+            }
+            
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+                background: transparent;
+            }
+            
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: rgba(45, 45, 45, 0.1);
+            }
+            
+            /* Modern Horizontal Scrollbar */
+            QScrollBar:horizontal {
+                background-color: rgba(45, 45, 45, 0.3);
+                height: 16px;
+                margin: 0px;
+                border-radius: 8px;
+                border: none;
+            }
+            
+            QScrollBar::handle:horizontal {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #666666, stop:1 #777777);
+                border-radius: 8px;
+                min-width: 30px;
+                min-height: 10px;
+                margin: 2px;
+                border: 2px solid transparent;
+            }
+            
+            QScrollBar::handle:horizontal:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #777777, stop:1 #888888);
+                border: 2px solid #999999;
+            }
+            
+            QScrollBar::handle:horizontal:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #888888, stop:1 #999999);
+                border: 2px solid #bbbbbb;
+            }
+            
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                width: 0px;
+                background: transparent;
+            }
+            
+            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+                background: rgba(45, 45, 45, 0.1);
+            }
+        """)
         
         # Create content widget for the grid
         self.content_widget = QWidget()
@@ -684,6 +822,18 @@ class AppGrid(QWidget):
         
         self._last_clicked_app = None
 
+    def set_icon_quality_settings(self, settings: dict) -> None:
+        """Set the icon quality settings for the grid."""
+        self.icon_quality_settings = settings
+        
+        # Update columns if specified in settings
+        if 'grid_columns' in settings:
+            self.columns = settings['grid_columns']
+        
+        # Refresh the grid if apps are already populated to apply new settings
+        if self.apps:
+            self.populate(self.apps)
+    
     def set_columns(self, columns: int) -> None:
         """Set the number of columns in the grid."""
         self.columns = columns
@@ -723,7 +873,11 @@ class AppGrid(QWidget):
     def _create_app_widget(self, app: AppItem) -> QWidget:
         """Create a widget for a single app item."""
         widget = QWidget()
-        widget.setFixedSize(100, 100)  # Square size for consistent grid
+        
+        # Get widget size from stored icon quality settings
+        widget_size = self.icon_quality_settings.get('widget_size', 100)
+        
+        widget.setFixedSize(widget_size, widget_size)  # Square size for consistent grid
         widget.setCursor(Qt.PointingHandCursor)
         # Enable drag and drop
         widget.setAcceptDrops(True)
@@ -749,28 +903,32 @@ class AppGrid(QWidget):
         # Icon
         icon_label = QLabel()
         try:
-            # Use the new quality-aware icon extraction method
-            icon = IconExtractor.extract_icon_with_quality(app.path, 48)
+            # Get the preferred icon size from stored quality settings
+            preferred_size = self.icon_quality_settings.get('preferred_source_sizes', [48])
+            target_size = preferred_size[0] if preferred_size else 48
+            
+            # Use the new quality-aware icon extraction method with selected size
+            icon = IconExtractor.extract_icon_with_quality(app.path, target_size)
             if icon and not icon.isNull():
-                pixmap = icon.pixmap(48, 48)
+                pixmap = icon.pixmap(target_size, target_size)
                 if not pixmap.isNull():
                     icon_label.setPixmap(pixmap)
                 else:
                     # Fallback to basic icon extraction
-                    fallback_icon = IconExtractor.extract_icon(app.path, 48)
+                    fallback_icon = IconExtractor.extract_icon(app.path, target_size)
                     if fallback_icon and not fallback_icon.isNull():
-                        icon_label.setPixmap(fallback_icon.pixmap(48, 48))
+                        icon_label.setPixmap(fallback_icon.pixmap(target_size, target_size))
             else:
                 # Fallback to basic icon extraction
-                fallback_icon = IconExtractor.extract_icon(app.path, 48)
+                fallback_icon = IconExtractor.extract_icon(app.path, target_size)
                 if fallback_icon and not fallback_icon.isNull():
-                    icon_label.setPixmap(fallback_icon.pixmap(48, 48))
+                    icon_label.setPixmap(fallback_icon.pixmap(target_size, target_size))
         except Exception as e:
             # If all else fails, try basic icon extraction
             try:
-                fallback_icon = IconExtractor.extract_icon(app.path, 48)
+                fallback_icon = IconExtractor.extract_icon(app.path, target_size)
                 if fallback_icon and not fallback_icon.isNull():
-                    icon_label.setPixmap(fallback_icon.pixmap(48, 48))
+                    icon_label.setPixmap(fallback_icon.pixmap(target_size, target_size))
             except Exception:
                 # Last resort: leave icon label empty
                 pass
@@ -1000,7 +1158,7 @@ class AppGrid(QWidget):
                 background-color: #2a2a2a;
                 color: #ffffff;
                 border: 1px solid #404040;
-                border-radius: 6px;
+                border-radius: 0px;
                 padding: 4px 0px;
                 font-family: 'Segoe UI', Arial, sans-serif;
                 font-size: 12px;
@@ -1054,7 +1212,10 @@ class AppGrid(QWidget):
             elif action == rename_action:
                 self._rename_app(app)
             elif action == icon_diagnostics_action:
-                self._show_icon_diagnostics()
+                # Find the main window and call its method
+                main_window = self._find_main_window()
+                if main_window and hasattr(main_window, '_show_icon_diagnostics'):
+                    main_window._show_icon_diagnostics()
             elif action == remove_action:
                 self._remove_app(app)
         else:
@@ -1067,7 +1228,10 @@ class AppGrid(QWidget):
             elif action == rename_action:
                 self._rename_app(app)
             elif action == icon_diagnostics_action:
-                self._show_icon_diagnostics()
+                # Find the main window and call its method
+                main_window = self._find_main_window()
+                if main_window and hasattr(main_window, '_show_icon_diagnostics'):
+                    main_window._show_icon_diagnostics()
             elif action == remove_action:
                 self._remove_app(app)
 
@@ -1158,27 +1322,22 @@ class LauncherWindow(MainWindowBase):
         self.config = ConfigStore()
         self.apps: List[AppItem] = self.config.load_apps()
         
-        # Icon quality settings
-        self.icon_quality_settings = {
-            'use_high_quality_scaling': True,
-            'use_dpi_aware_scaling': True,
-            'preferred_source_sizes': [32, 48, 64, 128, 256],
-            'fallback_scaling_method': 'smooth',
-            'cache_enabled': True,
-            'cache_size_limit': 100
-        }
+        # Icon quality settings - load from config file
+        self.icon_quality_settings = self.config.load_icon_quality_settings()
         
         # Apply icon quality settings
         self._apply_icon_quality_settings()
         
         # Override window title and size for launcher
         self.setWindowTitle(APP_NAME)
-        self.setMinimumSize(620, 620)
-        self.setMaximumSize(620, 620)
-        self.resize(620, 620)
         
-        # Remove default window frame and create custom title bar
-        self.setWindowFlags(Qt.FramelessWindowHint)
+        # Load and apply saved window position
+        self._load_window_position()
+        
+        # Set window flags to allow taskbar minimize/restore while keeping custom appearance
+        # Use Window instead of FramelessWindowHint to maintain proper Windows behavior
+        # Enable minimize and close buttons, disable maximize button
+        self.setWindowFlags(Qt.Window | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
         
         # Set window icon for taskbar (different from UI icons) - after setting window flags
         window_icon = QIcon("template_app/assets/icons/icon2.png")
@@ -1188,14 +1347,27 @@ class LauncherWindow(MainWindowBase):
         else:
             print("Failed to load window icon from template_app/assets/icons/icon2.png")
         
-        # Enable high-quality rendering attributes
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setAttribute(Qt.WA_NoSystemBackground, True)
-        self.setAttribute(Qt.WA_OpaquePaintEvent, False)
+        # Enable high-quality rendering attributes but keep system background for proper taskbar behavior
+        self.setAttribute(Qt.WA_TranslucentBackground, False)  # Changed to False
+        self.setAttribute(Qt.WA_NoSystemBackground, False)    # Changed to False
+        self.setAttribute(Qt.WA_OpaquePaintEvent, True)       # Changed to True
+        
+        # Apply dark title bar theme for Windows
+        self._apply_dark_title_bar_theme()
+        
+        # Apply global dark theme for dialogs and message boxes
+        from template_app.styles import apply_global_dark_theme
+        apply_global_dark_theme()
         
         # Clear default UI and build launcher interface
         self._clear_default_ui()
         self._build_launcher_ui()
+        
+        # Connect window events
+        self._connect_window_events()
+        
+        # Override base class margins to remove black border
+        self.root_layout.setContentsMargins(0, 0, 0, 0)
         
         # Add launcher-specific shortcuts
         self._shortcut_add = QShortcut(QKeySequence("Ctrl+N"), self)
@@ -1213,113 +1385,145 @@ class LauncherWindow(MainWindowBase):
         self._shortcut_icon_diagnostics = QShortcut(QKeySequence("Ctrl+D"), self)
         self._shortcut_icon_diagnostics.activated.connect(self._show_icon_diagnostics)
         
-        # Apply dark theme to main window with transparent background for rounded corners
+        self._shortcut_refresh_theme = QShortcut(QKeySequence("Ctrl+T"), self)
+        self._shortcut_refresh_theme.activated.connect(self._refresh_dark_theme)
+        
+        
+        # Apply dark theme to main window with solid background
         self.setStyleSheet("""
+            LauncherWindow {
+                background-color: #333333;
+                border: none;
+            }
             QWidget {
-                background-color: transparent;
+                background-color: #333333;
                 color: #ffffff;
+                border: none;
             }
         """)
+        
+        # Connect window events
+        self._connect_window_events()
     
     def _apply_icon_quality_settings(self):
         """Apply the current icon quality settings to the IconExtractor."""
         IconExtractor.set_icon_quality_settings(self.icon_quality_settings)
+        # Also update the AppGrid settings if it exists
+        if hasattr(self, 'app_grid'):
+            self.app_grid.set_icon_quality_settings(self.icon_quality_settings)
+    
+    def _get_current_icon_size(self):
+        """Get the current icon size being used in the launcher."""
+        preferred_sizes = self.icon_quality_settings.get('preferred_source_sizes', [48])
+        return preferred_sizes[0] if preferred_sizes else 48
+    
+        
+    def _reset_icon_settings(self, icon_size_combo, widget_size_combo, grid_columns_combo, high_quality_cb, dpi_aware_cb, cache_cb, cache_spin, scaling_combo):
+        """Reset icon quality settings to default values."""
+        # Reset to default values
+        icon_size_combo.setCurrentText("48x48")
+        widget_size_combo.setCurrentText("100x100")
+        grid_columns_combo.setCurrentText("5")
+        high_quality_cb.setChecked(True)
+        dpi_aware_cb.setChecked(True)
+        cache_cb.setChecked(True)
+        cache_spin.setValue(100)
+        scaling_combo.setCurrentText("smooth")
+        
+        # Update internal settings to defaults
+        default_settings = {
+            'use_high_quality_scaling': True,
+            'use_dpi_aware_scaling': True,
+            'preferred_source_sizes': [48, 32, 64, 128],  # 48 first as it's selected
+            'fallback_scaling_method': 'smooth',
+            'cache_enabled': True,
+            'cache_size_limit': 100,
+            'widget_size': 100,  # Default widget size (100x100)
+            'grid_columns': 5  # Default number of columns
+        }
+        self.icon_quality_settings.update(default_settings)
+        
+        # Save default settings to config file
+        self.config.save_icon_quality_settings(self.icon_quality_settings)
     
     def _show_icon_quality_settings(self):
         """Show a dialog to configure icon quality settings."""
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QSpinBox, QComboBox, QLabel, QPushButton
         
         dialog = QDialog(self)
-        dialog.setWindowTitle("Icon Quality Settings")
+        dialog.setWindowTitle("Quality Settings")
         dialog.setModal(True)
-        dialog.resize(400, 300)
+        dialog.resize(450, 450)  # Increased height to accommodate grid columns option
         
-        # Apply dark theme styling to match the UI
-        dialog.setStyleSheet("""
-            QDialog {
-                background-color: #333333;
-                color: #ffffff;
-                border: 1px solid #404040;
-                border-radius: 8px;
-            }
-            QLabel {
-                color: #ffffff;
-                background-color: transparent;
-            }
-            QCheckBox {
-                color: #ffffff;
-                background-color: transparent;
-                spacing: 8px;
-            }
-            QCheckBox::indicator {
-                width: 16px;
-                height: 16px;
-                border: 1px solid #606060;
-                border-radius: 3px;
-                background-color: #2d2d2d;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #ffffff;
-                border-color: #ffffff;
-            }
-            QCheckBox::indicator:hover {
-                border-color: #808080;
-            }
-            QSpinBox {
-                background-color: #2d2d2d;
-                color: #ffffff;
-                border: 1px solid #606060;
-                border-radius: 4px;
-                padding: 4px;
-            }
-            QSpinBox:hover {
-                border-color: #808080;
-            }
-            QSpinBox:focus {
-                border-color: #ffffff;
-            }
-            QComboBox {
-                background-color: #2d2d2d;
-                color: #ffffff;
-                border: 1px solid #606060;
-                border-radius: 4px;
-                padding: 4px;
-                min-width: 100px;
-            }
-            QComboBox:hover {
-                border-color: #808080;
-            }
-            QComboBox:focus {
-                border-color: #ffffff;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 20px;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 5px solid #808080;
-            }
-            QPushButton {
-                background-color: #2d2d2d;
-                color: #ffffff;
-                border: 1px solid #606060;
-                border-radius: 4px;
-                padding: 8px 16px;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #363636;
-                border-color: #808080;
-            }
-            QPushButton:pressed {
-                background-color: #1a1a1a;
-            }
-        """)
+        # Import and apply dark dialog styling from styles.py
+        from template_app.styles import apply_dark_title_bar_theme, get_dark_dialog_stylesheet
+        
+        # Apply dark title bar theme for Windows
+        apply_dark_title_bar_theme(dialog)
+        
+        # Apply dark dialog stylesheet
+        dialog.setStyleSheet(get_dark_dialog_stylesheet())
         
         layout = QVBoxLayout(dialog)
+        layout.setSpacing(16)
+        layout.setContentsMargins(24, 24, 24, 24)
+        
+        # Icon size selection
+        icon_size_layout = QHBoxLayout()
+        icon_size_layout.addWidget(QLabel("Icon size:"))
+        icon_size_combo = QComboBox()
+        icon_size_combo.addItems(['32x32', '48x48', '64x64', '96x96', '128x128'])
+        # Set current selection based on current icon size
+        current_icon_size = self._get_current_icon_size()
+        icon_size_combo.setCurrentText(f"{current_icon_size}x{current_icon_size}")
+        icon_size_layout.addWidget(icon_size_combo)
+        
+        # Add info label about current icon size
+        current_size_info = QLabel(f"Current: {self._get_current_icon_size()}x{self._get_current_icon_size()}")
+        current_size_info.setStyleSheet("color: #808080; font-size: 11px;")
+        icon_size_layout.addWidget(current_size_info)
+        layout.addLayout(icon_size_layout)
+        
+        # Add spacing after icon size section
+        layout.addSpacing(8)
+        
+        # Widget size selection
+        widget_size_layout = QHBoxLayout()
+        widget_size_layout.addWidget(QLabel("Widget size:"))
+        widget_size_combo = QComboBox()
+        widget_size_combo.addItems(['80x80', '90x90', '100x100', ' 110x110', '120x120', '130x130', '140x140', '150x150', '160x160'])
+        # Set current selection based on current widget size
+        current_widget_size = self.icon_quality_settings.get('widget_size', 100)
+        widget_size_combo.setCurrentText(f"{current_widget_size}x{current_widget_size}")
+        widget_size_layout.addWidget(widget_size_combo)
+        
+        # Add info label about current widget size
+        current_widget_info = QLabel(f"Current: {current_widget_size}x{current_widget_size}")
+        current_widget_info.setStyleSheet("color: #808080; font-size: 11px;")
+        widget_size_layout.addWidget(current_widget_info)
+        layout.addLayout(widget_size_layout)
+        
+        # Add spacing after widget size section
+        layout.addSpacing(8)
+        
+        # Grid columns selection
+        grid_columns_layout = QHBoxLayout()
+        grid_columns_layout.addWidget(QLabel("Grid columns:"))
+        grid_columns_combo = QComboBox()
+        grid_columns_combo.addItems(['3', '4', '5', '6', '7', '8'])
+        # Set current selection based on current grid columns
+        current_grid_columns = self.icon_quality_settings.get('grid_columns', 5)
+        grid_columns_combo.setCurrentText(str(current_grid_columns))
+        grid_columns_layout.addWidget(grid_columns_combo)
+        
+        # Add info label about current grid columns
+        current_columns_info = QLabel(f"Current: {current_grid_columns} columns")
+        current_columns_info.setStyleSheet("color: #808080; font-size: 11px;")
+        grid_columns_layout.addWidget(current_columns_info)
+        layout.addLayout(grid_columns_layout)
+        
+        # Add spacing after grid columns section
+        layout.addSpacing(8)
         
         # High quality scaling checkbox
         high_quality_cb = QCheckBox("Use high-quality scaling")
@@ -1330,6 +1534,9 @@ class LauncherWindow(MainWindowBase):
         dpi_aware_cb = QCheckBox("Use DPI-aware scaling")
         dpi_aware_cb.setChecked(self.icon_quality_settings['use_dpi_aware_scaling'])
         layout.addWidget(dpi_aware_cb)
+        
+        # Add spacing after scaling options
+        layout.addSpacing(8)
         
         # Cache enabled checkbox
         cache_cb = QCheckBox("Enable icon caching")
@@ -1345,6 +1552,9 @@ class LauncherWindow(MainWindowBase):
         cache_layout.addWidget(cache_spin)
         layout.addLayout(cache_layout)
         
+        # Add spacing after cache section
+        layout.addSpacing(8)
+        
         # Scaling method
         scaling_layout = QHBoxLayout()
         scaling_layout.addWidget(QLabel("Scaling method:"))
@@ -1354,17 +1564,28 @@ class LauncherWindow(MainWindowBase):
         scaling_layout.addWidget(scaling_combo)
         layout.addLayout(scaling_layout)
         
+        # Add spacing before buttons
+        layout.addSpacing(20)
+        
+
+        
         # Buttons
         button_layout = QHBoxLayout()
+        reset_btn = QPushButton("Reset to Default")
+        reset_btn.clicked.connect(lambda: self._reset_icon_settings(icon_size_combo, widget_size_combo, grid_columns_combo, high_quality_cb, dpi_aware_cb, cache_cb, cache_spin, scaling_combo))
+        
         apply_btn = QPushButton("Apply")
         cancel_btn = QPushButton("Cancel")
+        
+        button_layout.addWidget(reset_btn)
+        button_layout.addStretch()
         button_layout.addWidget(apply_btn)
         button_layout.addWidget(cancel_btn)
         layout.addLayout(button_layout)
         
         # Connect buttons
         apply_btn.clicked.connect(lambda: self._apply_icon_settings_dialog(
-            dialog, high_quality_cb.isChecked(), dpi_aware_cb.isChecked(),
+            dialog, icon_size_combo.currentText(), widget_size_combo.currentText(), grid_columns_combo.currentText(), high_quality_cb.isChecked(), dpi_aware_cb.isChecked(),
             cache_cb.isChecked(), cache_spin.value(), scaling_combo.currentText()
         ))
         cancel_btn.clicked.connect(dialog.reject)
@@ -1390,44 +1611,14 @@ class LauncherWindow(MainWindowBase):
         dialog.setModal(True)
         dialog.resize(600, 500)
         
-        # Apply dark theme styling to match the UI
-        dialog.setStyleSheet("""
-            QDialog {
-                background-color: #333333;
-                color: #ffffff;
-                border: 1px solid #404040;
-                border-radius: 8px;
-            }
-            QLabel {
-                color: #ffffff;
-                background-color: transparent;
-            }
-            QTextEdit {
-                background-color: #2d2d2d;
-                color: #ffffff;
-                border: 1px solid #606060;
-                border-radius: 4px;
-                padding: 8px;
-            }
-            QTextEdit:focus {
-                border-color: #ffffff;
-            }
-            QPushButton {
-                background-color: #2d2d2d;
-                color: #ffffff;
-                border: 1px solid #606060;
-                border-radius: 4px;
-                padding: 8px 16px;
-                min-width: 120px;
-            }
-            QPushButton:hover {
-                background-color: #363636;
-                border-color: #808080;
-            }
-            QPushButton:pressed {
-                background-color: #1a1a1a;
-            }
-        """)
+        # Import and apply dark dialog styling from styles.py
+        from template_app.styles import apply_dark_title_bar_theme, get_dark_dialog_stylesheet
+        
+        # Apply dark title bar theme for Windows
+        apply_dark_title_bar_theme(dialog)
+        
+        # Apply dark dialog stylesheet
+        dialog.setStyleSheet(get_dark_dialog_stylesheet())
         
         layout = QVBoxLayout(dialog)
         
@@ -1508,6 +1699,97 @@ class LauncherWindow(MainWindowBase):
             issues_textedit.setPlainText(issues_text)
             issues_textedit.setReadOnly(True)
             issues_textedit.setMaximumHeight(150)
+            
+            # Apply modern scrollbar styling to the text edit
+            issues_textedit.setStyleSheet("""
+                QTextEdit {
+                    background-color: #2d2d2d;
+                    color: #ffffff;
+                    border: 1px solid #404040;
+                    border-radius: 6px;
+                    padding: 8px;
+                    font-family: 'Segoe UI', Arial, sans-serif;
+                    font-size: 12px;
+                }
+                
+                QTextEdit QScrollBar:vertical {
+                    background-color: rgba(45, 45, 45, 0.3);
+                    width: 16px;
+                    margin: 0px;
+                    border-radius: 8px;
+                    border: none;
+                }
+                
+                QTextEdit QScrollBar::handle:vertical {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #666666, stop:1 #777777);
+                    border-radius: 8px;
+                    min-height: 30px;
+                    margin: 2px;
+                    border: 2px solid transparent;
+                }
+                
+                QTextEdit QScrollBar::handle:vertical:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #777777, stop:1 #888888);
+                    border: 2px solid #999999;
+                }
+                
+                QTextEdit QScrollBar::handle:vertical:pressed {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #888888, stop:1 #999999);
+                    border: 2px solid #bbbbbb;
+                }
+                
+                QTextEdit QScrollBar::add-line:vertical, QTextEdit QScrollBar::sub-line:vertical {
+                    height: 0px;
+                    background: transparent;
+                }
+                
+                QTextEdit QScrollBar::add-page:vertical, QTextEdit QScrollBar::sub-page:vertical {
+                    background: rgba(45, 45, 45, 0.1);
+                }
+                
+                QTextEdit QScrollBar:horizontal {
+                    background-color: rgba(45, 45, 45, 0.3);
+                    height: 16px;
+                    margin: 0px;
+                    border-radius: 8px;
+                    border: none;
+                }
+                
+                QTextEdit QScrollBar::handle:horizontal {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #666666, stop:1 #777777);
+                    border-radius: 8px;
+                    min-width: 30px;
+                    min-height: 10px;
+                    margin: 2px;
+                    border: 2px solid transparent;
+                }
+                
+                QTextEdit QScrollBar::handle:horizontal:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #777777, stop:1 #888888);
+                    border: 2px solid #999999;
+                }
+                
+                QTextEdit QScrollBar::handle:horizontal:pressed {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #888888, stop:1 #999999);
+                    border: 2px solid #bbbbbb;
+                }
+                
+                QTextEdit QScrollBar::add-line:horizontal, QTextEdit QScrollBar::sub-line:horizontal {
+                    width: 0px;
+                    background: transparent;
+                }
+                
+                QTextEdit QScrollBar::add-page:horizontal, QTextEdit QScrollBar::sub-page:horizontal {
+                    background: rgba(45, 45, 45, 0.1);
+                }
+            """)
+            
             layout.addWidget(QLabel("Issues and Recommendations:"))
             layout.addWidget(issues_textedit)
         
@@ -1585,69 +1867,309 @@ class LauncherWindow(MainWindowBase):
         except Exception as e:
             QMessageBox.warning(self, "Refresh Error", f"Error refreshing app grid:\n{str(e)}")
     
-    def _title_bar_mouse_press(self, event):
-        """Handle mouse press on title bar for window dragging."""
-        if event.button() == Qt.LeftButton:
-            # Store the initial mouse position relative to the window
-            self._drag_start_pos = event.globalPosition().toPoint()
-            self._window_start_pos = self.pos()
-            self._dragging = True
-    
-    def _title_bar_mouse_move(self, event):
-        """Handle mouse move on title bar for window dragging."""
-        if hasattr(self, '_dragging') and self._dragging:
-            # Calculate the new position based on the initial window position and mouse delta
-            current_mouse_pos = event.globalPosition().toPoint()
-            mouse_delta = current_mouse_pos - self._drag_start_pos
-            new_window_pos = self._window_start_pos + mouse_delta
-            
-            # Move the window to the new position
-            self.move(new_window_pos)
-    
-    def mouseReleaseEvent(self, event):
-        """Handle mouse release to stop dragging."""
-        if hasattr(self, '_dragging'):
-            self._dragging = False
-    
-    def paintEvent(self, event):
-        """Custom paint event to draw rounded corners with enhanced anti-aliasing."""
-        from PySide6.QtGui import QPainter, QPainterPath, QBrush, QColor, QPen
-        from PySide6.QtCore import Qt
-        
-        painter = QPainter(self)
-        
-        # Enhanced anti-aliasing and rendering quality (PySide6 compatible)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-        
-        # Create rounded rectangle path with 10px radius
-        path = QPainterPath()
-        path.addRoundedRect(self.rect(), 10, 10)
-        
-        # Fill with dark background using high-quality brush
-        brush = QBrush(QColor("#333333"))
-        brush.setStyle(Qt.BrushStyle.SolidPattern)
-        painter.fillPath(path, brush)
-        
-        # Draw subtle border with anti-aliased pen
-        pen = QPen(QColor("#404040"))
-        pen.setWidth(1)
-        pen.setStyle(Qt.PenStyle.SolidLine)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        painter.setPen(pen)
-        painter.drawPath(path)
+    def changeEvent(self, event):
+        """Handle window state changes (minimize, maximize, restore)."""
+        if event.type() == event.Type.WindowStateChange:
+            # Ensure the window maintains its custom appearance when restored
+            if self.windowState() == Qt.WindowNoState:
+                # Window was restored from minimized state
+                # Reapply dark title bar theme to ensure it's still active
+                self._apply_dark_title_bar_theme()
+        super().changeEvent(event)
 
-    def _apply_icon_settings_dialog(self, dialog, high_quality, dpi_aware, cache_enabled, cache_size, scaling_method):
+    def _apply_dark_title_bar_theme(self):
+        """Apply dark title bar theme for Windows using Win32 API."""
+        try:
+            if HAS_WIN32:
+                # Get the window handle
+                hwnd = self.winId().__int__()
+                
+                # Set dark title bar using Windows 10+ dark mode API
+                # This requires Windows 10 version 1809 or later
+                import ctypes
+                from ctypes import wintypes
+                
+                # Constants for dark mode
+                DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+                DWMWA_CAPTION_COLOR = 35
+                DWMWA_TEXT_COLOR = 36
+                
+                # Try to set dark mode for title bar
+                try:
+                    # Set immersive dark mode (Windows 10 1809+)
+                    ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                        hwnd, 
+                        DWMWA_USE_IMMERSIVE_DARK_MODE, 
+                        ctypes.byref(wintypes.BOOL(True)), 
+                        ctypes.sizeof(wintypes.BOOL)
+                    )
+                except Exception:
+                    pass  # Fallback if not supported
+                
+                # Set custom caption color (Windows 11 22H2+)
+                try:
+                    # Dark gray color for caption
+                    caption_color = 0x002f2f2f  # RGB(47, 47, 47)
+                    ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                        hwnd, 
+                        DWMWA_CAPTION_COLOR, 
+                        ctypes.byref(wintypes.DWORD(caption_color)), 
+                        ctypes.sizeof(wintypes.DWORD)
+                    )
+                except Exception:
+                    pass  # Fallback if not supported
+                
+                # Set custom text color (Windows 11 22H2+)
+                try:
+                    # White color for text
+                    text_color = 0x00FFFFFF  # RGB(255, 255, 255)
+                    ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                        hwnd, 
+                        DWMWA_TEXT_COLOR, 
+                        ctypes.byref(wintypes.DWORD(text_color)), 
+                        ctypes.sizeof(wintypes.DWORD)
+                    )
+                except Exception:
+                    pass  # Fallback if not supported
+                
+                print("Dark title bar theme applied successfully")
+            else:
+                print("Win32 API not available - using fallback styling")
+                
+        except Exception as e:
+            print(f"Error applying dark title bar theme: {e}")
+            # Fallback: Use Qt styling for title bar
+            self._apply_fallback_title_bar_styling()
+
+    def _apply_fallback_title_bar_styling(self):
+        """Apply fallback title bar styling using Qt."""
+        try:
+            # Set window title with custom styling
+            self.setWindowTitle("SuperLauncher")
+            
+            # Apply custom palette for title bar colors
+            from PySide6.QtGui import QPalette, QColor
+            from PySide6.QtWidgets import QApplication
+            
+            app = QApplication.instance()
+            if app:
+                palette = app.palette()
+                
+                # Set dark colors for title bar
+                palette.setColor(QPalette.ColorRole.Window, QColor("#2f2f2f"))
+                palette.setColor(QPalette.ColorRole.WindowText, QColor("#ffffff"))
+                palette.setColor(QPalette.ColorRole.Base, QColor("#2d2d2d"))
+                palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#333333"))
+                palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#2d2d2d"))
+                palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#ffffff"))
+                
+                app.setPalette(palette)
+                
+                # Also set the palette for this window
+                self.setPalette(palette)
+                
+                print("Fallback title bar styling applied")
+                
+        except Exception as e:
+            print(f"Error applying fallback title bar styling: {e}")
+
+    def _refresh_dark_theme(self):
+        """Refresh the dark theme and title bar styling."""
+        try:
+            # Reapply dark title bar theme
+            self._apply_dark_title_bar_theme()
+            
+            # Reapply global dark theme for dialogs and message boxes
+            from template_app.styles import apply_global_dark_theme
+            apply_global_dark_theme()
+            
+            # Update the main window styling
+            self.setStyleSheet("""
+                LauncherWindow {
+                    background-color: #333333;
+                    border: none;
+                }
+                QWidget {
+                    background-color: #333333;
+                    color: #ffffff;
+                    border: none;
+                }
+            """)
+            
+            # Override base class margins to remove black border
+            self.root_layout.setContentsMargins(0, 0, 0, 0)
+            
+            # Force a repaint
+            self.update()
+            
+            print("Dark theme refreshed successfully")
+            
+        except Exception as e:
+            print(f"Error refreshing dark theme: {e}")
+
+    def _connect_window_events(self):
+        """Connect window events for proper theme handling."""
+        try:
+            # Connect focus change event to refresh theme
+            self.focusInEvent = self._on_focus_in
+            self.focusOutEvent = self._on_focus_out
+            
+            # Connect show event to ensure theme is applied
+            self.showEvent = self._on_show
+            
+            # Connect move event to save window position
+            self.moveEvent = self._on_move
+            
+            # Connect close event to save window position
+            self.closeEvent = self._on_close
+            
+            print("Window events connected successfully")
+            
+        except Exception as e:
+            print(f"Error connecting window events: {e}")
+
+    def _on_focus_in(self, event):
+        """Handle focus in event."""
+        # Refresh dark theme when window gains focus
+        self._apply_dark_title_bar_theme()
+        super().focusInEvent(event)
+
+    def _on_focus_out(self, event):
+        """Handle focus out event."""
+        super().focusOutEvent(event)
+
+    def _on_show(self, event):
+        """Handle show event."""
+        # Ensure dark theme is applied when window is shown
+        self._apply_dark_title_bar_theme()
+        super().showEvent(event)
+    
+    def _load_window_position(self):
+        """Load and apply saved window position."""
+        try:
+            position_data = self.config.load_window_position()
+            x = position_data.get('x')
+            y = position_data.get('y')
+            width = position_data.get('width', 620)
+            height = position_data.get('height', 620)
+            
+            # Set window size
+            self.resize(width, height)
+            
+            # Set window position if coordinates are saved
+            if x is not None and y is not None:
+                # Ensure window is within screen bounds
+                screen = QApplication.primaryScreen()
+                if screen:
+                    screen_geometry = screen.geometry()
+                    # Adjust position if window would be off-screen
+                    if x < screen_geometry.left():
+                        x = screen_geometry.left() + 50
+                    if y < screen_geometry.top():
+                        y = screen_geometry.top() + 50
+                    if x + width > screen_geometry.right():
+                        x = screen_geometry.right() - width - 50
+                    if y + height > screen_geometry.bottom():
+                        y = screen_geometry.bottom() - height - 50
+                
+                self.move(x, y)
+            else:
+                # Center window on screen if no position saved
+                self._center_window_on_screen()
+                
+        except Exception as e:
+            print(f"Error loading window position: {e}")
+            # Fallback to centering on screen
+            self._center_window_on_screen()
+    
+    def _center_window_on_screen(self):
+        """Center the window on the primary screen."""
+        try:
+            screen = QApplication.primaryScreen()
+            if screen:
+                screen_geometry = screen.geometry()
+                window_geometry = self.geometry()
+                x = screen_geometry.center().x() - window_geometry.width() // 2
+                y = screen_geometry.center().y() - window_geometry.height() // 2
+                self.move(x, y)
+        except Exception as e:
+            print(f"Error centering window: {e}")
+    
+    def _on_move(self, event):
+        """Handle window move event to save position."""
+        try:
+            # Save position after a short delay to avoid excessive saves during dragging
+            if hasattr(self, '_position_save_timer'):
+                self._position_save_timer.stop()
+            else:
+                from PySide6.QtCore import QTimer
+                self._position_save_timer = QTimer()
+                self._position_save_timer.setSingleShot(True)
+                self._position_save_timer.timeout.connect(self._save_current_position)
+            
+            self._position_save_timer.start(500)  # Save after 500ms of no movement
+            
+        except Exception as e:
+            print(f"Error handling move event: {e}")
+        
+        super().moveEvent(event)
+    
+    def _save_current_position(self):
+        """Save the current window position and size."""
+        try:
+            geometry = self.geometry()
+            self.config.save_window_position(
+                geometry.x(),
+                geometry.y(),
+                geometry.width(),
+                geometry.height()
+            )
+        except Exception as e:
+            print(f"Error saving window position: {e}")
+    
+    def _on_close(self, event):
+        """Handle window close event to save final position."""
+        try:
+            self._save_current_position()
+        except Exception as e:
+            print(f"Error saving window position on close: {e}")
+        
+        super().closeEvent(event)
+
+    def _apply_icon_settings_dialog(self, dialog, icon_size, widget_size, grid_columns, high_quality, dpi_aware, cache_enabled, cache_size, scaling_method):
         """Apply the icon quality settings from the dialog."""
+        # Parse icon size from "48x48" format to integer
+        try:
+            selected_size = int(icon_size.split('x')[0])
+        except (ValueError, IndexError):
+            selected_size = 48  # Default fallback
+        
+        # Parse widget size from "100x100" format to integer
+        try:
+            selected_widget_size = int(widget_size.split('x')[0])
+        except (ValueError, IndexError):
+            selected_widget_size = 100  # Default fallback
+        
+        # Parse grid columns from string to integer
+        try:
+            selected_grid_columns = int(grid_columns)
+        except (ValueError, IndexError):
+            selected_grid_columns = 5  # Default fallback
+        
+        # Update preferred source sizes to prioritize the selected size
         self.icon_quality_settings.update({
             'use_high_quality_scaling': high_quality,
             'use_dpi_aware_scaling': dpi_aware,
             'cache_enabled': cache_enabled,
             'cache_size_limit': cache_size,
-            'fallback_scaling_method': scaling_method
+            'fallback_scaling_method': scaling_method,
+            'preferred_source_sizes': [selected_size, 32, 48, 64, 128],  # Put selected size first
+            'widget_size': selected_widget_size,  # Update widget size
+            'grid_columns': selected_grid_columns  # Update grid columns
         })
+        
+        # Save settings to config file
+        self.config.save_icon_quality_settings(self.icon_quality_settings)
         
         # Apply the new settings
         self._apply_icon_quality_settings()
@@ -1655,8 +2177,9 @@ class LauncherWindow(MainWindowBase):
         # Clear the icon cache to force regeneration with new settings
         IconExtractor.clear_cache()
         
-        # Refresh the app grid to show icons with new quality settings
+        # Refresh the app grid to show icons with new quality settings and widget sizes
         self.app_grid.populate(self.apps)
+        
         
         dialog.accept()
 
@@ -1676,161 +2199,8 @@ class LauncherWindow(MainWindowBase):
     def _build_launcher_ui(self):
         """Build the launcher-specific user interface."""
         
-        # Custom title bar
-        title_bar = QWidget()
-        title_bar.setFixedHeight(40)
-        title_bar.setStyleSheet("""
-            QWidget {
-                background-color: transparent;
-                border: none;
-            }
-        """)
-        
-        title_bar_layout = QHBoxLayout(title_bar)
-        title_bar_layout.setContentsMargins(10, 0, 0, 0)
-        title_bar_layout.setSpacing(0)
-        
-        # App icon and title on the left
-        title_info = QWidget()
-        title_info_layout = QHBoxLayout(title_info)
-        title_info_layout.setContentsMargins(0, 0, 0, 0)
-        title_info_layout.setSpacing(8)
-        
-        # App icon
-        app_icon = QLabel()
-        icon = QIcon("template_app/assets/icons/icon.png")
-        if not icon.isNull():
-            app_icon.setPixmap(icon.pixmap(20, 20))
-        app_icon.setStyleSheet("background: transparent; border: none;")
-        
-        # App title
-        app_title = QLabel(APP_NAME)
-        app_title.setStyleSheet("""
-            QLabel {
-                color: #ffffff;
-                font-size: 14px;
-                font-weight: bold;
-                background: transparent;
-                border: none;
-            }
-        """)
-        
-        title_info_layout.addWidget(app_icon)
-        title_info_layout.addWidget(app_title)
-        title_info_layout.addStretch()
-        
-        # Window control buttons on the right
-        controls_container = QWidget()
-        controls_container.setStyleSheet("background: transparent; border: none;")
-        controls_layout = QHBoxLayout(controls_container)
-        controls_layout.setContentsMargins(0, 0, 0, 0)
-        controls_layout.setSpacing(5)
-        
-        # Minimize button
-        btn_minimize = QPushButton("─")
-        btn_minimize.setFixedSize(30, 30)
-        btn_minimize.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: #ffffff;
-                border: none;
-                font-size: 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #404040;
-                border-radius: 4px;
-            }
-        """)
-        btn_minimize.clicked.connect(self.showMinimized)
-        
-        # Close button
-        btn_close_title = QPushButton("×")
-        btn_close_title.setFixedSize(30, 30)
-        btn_close_title.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: #ffffff;
-                border: none;
-                font-size: 18px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #e81123;
-                border-radius: 4px;
-            }
-        """)
-        btn_close_title.clicked.connect(self.close)
-        
-        controls_layout.addWidget(btn_minimize)
-        controls_layout.addWidget(btn_close_title)
-        
-        # Add widgets to title bar
-        title_bar_layout.addWidget(title_info)
-        title_bar_layout.addWidget(controls_container)
-        
-        # Header: Title and search
-        # Create title container with icon and text
-        title_container = QWidget()
-        title_container.setStyleSheet("""
-            QWidget {
-                background-color: transparent;
-                border: none;
-            }
-        """)
-        
-        
-        # Add rocket icon
-        icon_label = QLabel()
-        icon = QIcon("template_app/assets/icons/icon.png")
-        if not icon.isNull():
-            # Use high-quality scaling for the header icon
-            icon_label.setPixmap(icon.pixmap(32, 32, QIcon.Mode.Normal, QIcon.State.Off))
-        else:
-            # Fallback if icon not found - try alternative paths
-            fallback_paths = [
-                "template_app/assets/icons/icon.png",
-                "template_app/assets/icon.png",
-                "assets/icons/icon.png"
-            ]
-            
-            icon = QIcon()
-            for path in fallback_paths:
-                icon = QIcon(path)
-                if not icon.isNull():
-                    break
-            
-            # If still no icon found, create a default placeholder
-            if icon.isNull():
-                # Create a simple colored square as placeholder
-                pixmap = QPixmap(32, 32)
-                pixmap.fill(QColor(100, 150, 200))  # Nice blue color
-                icon = QIcon(pixmap)
-        
-        icon_label.setAlignment(Qt.AlignCenter)
-        
-        # Title text
-        title_label = QLabel(APP_NAME)
-        title_label.setStyleSheet("""
-            QLabel {
-                font-size: 24px; 
-                font-weight: bold; 
-                padding: 10px; 
-                color: #ffffff;
-                background-color: transparent;
-            }
-        """)
-        title_label.setAlignment(Qt.AlignCenter)
-        
-        # Add icon and title to layout
-        #title_layout = QHBoxLayout(title_container)
-        #title_layout.setContentsMargins(0, 0, 0, 0)
-        #title_layout.setSpacing(0)
-        #title_layout.setAlignment(Qt.AlignCenter)
-        #title_layout.addWidget(icon_label)
-        #title_layout.addWidget(title_label)
-        
-        # Add search box below title
+        # Header: Search box
+        # Add search box
         self.filter_edit = QLineEdit()
         self.filter_edit.setFixedHeight(30)
         self.filter_edit.setFixedWidth(250)
@@ -1847,7 +2217,7 @@ class LauncherWindow(MainWindowBase):
                 margin: 0 20px;
             }
             QLineEdit:focus {
-                border-color: #404040;
+                border-color: #606060;
             }
             QLineEdit::placeholder {
                 color: #808080;
@@ -1863,25 +2233,18 @@ class LauncherWindow(MainWindowBase):
             }
         """)
         header_content_layout = QVBoxLayout(header_content)
-        header_content_layout.setContentsMargins(0, 10, 0, 0)
+        header_content_layout.setContentsMargins(0, 20, 0, 0)
         header_content_layout.setSpacing(10)
         
-        # Add title and search box vertically
-        #header_content_layout.addWidget(title_container)
+        # Add search box
         header_content_layout.addWidget(self.filter_edit, alignment=Qt.AlignCenter)
         
+                
         # Add the header content to the main header layout
         self.header_layout.addWidget(header_content)
         
-        # Increase header height to accommodate title and search box
+        # Set header height to accommodate search box and icon size info
         self.header_widget.setFixedHeight(100)
-        
-        # Add title bar to the very top of the main layout
-        self.layout().insertWidget(0, title_bar)
-        
-        # Enable window dragging from title bar
-        title_bar.mousePressEvent = self._title_bar_mouse_press
-        title_bar.mouseMoveEvent = self._title_bar_mouse_move
         
 
         # Body: App list and controls
@@ -1890,30 +2253,96 @@ class LauncherWindow(MainWindowBase):
         
         # App grid area
         self.app_grid = AppGrid()
+        # Pass the icon quality settings to the AppGrid
+        self.app_grid.set_icon_quality_settings(self.icon_quality_settings)
         self.app_grid.populate(self.apps)
         # Don't connect context menu here - AppGrid handles it internally
         
-        # Style the scroll area to match the dark theme
+        # Style the scroll area with modern scrollbar design
         self.app_grid.scroll_area.setStyleSheet("""
             QScrollArea {
                 background-color: #333333;
                 border: none;
+                outline: none;
             }
+            
+            /* Modern Vertical Scrollbar */
             QScrollBar:vertical {
-                background-color: #2d2d2d;
-                width: 12px;
-                border-radius: 6px;
+                background-color: rgba(45, 45, 45, 0.3);
+                width: 18px;
+                margin: 0px;
+                border-radius: 9px;
+                border: none;
             }
+            
             QScrollBar::handle:vertical {
-                background-color: #606060;
-                border-radius: 6px;
-                min-height: 20px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #666666, stop:1 #777777);
+                border-radius: 9px;
+                min-height: 35px;
+                margin: 3px;
+                border: 2px solid transparent;
             }
+            
             QScrollBar::handle:vertical:hover {
-                background-color: #808080;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #777777, stop:1 #888888);
+                border: 2px solid #999999;
             }
+            
+            QScrollBar::handle:vertical:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #888888, stop:1 #999999);
+                border: 2px solid #bbbbbb;
+            }
+            
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0px;
+                background: transparent;
+            }
+            
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: rgba(45, 45, 45, 0.1);
+            }
+            
+            /* Modern Horizontal Scrollbar */
+            QScrollBar:horizontal {
+                background-color: rgba(45, 45, 45, 0.3);
+                height: 18px;
+                margin: 0px;
+                border-radius: 9px;
+                border: none;
+            }
+            
+            QScrollBar::handle:horizontal {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #666666, stop:1 #777777);
+                border-radius: 9px;
+                min-width: 35px;
+                min-height: 12px;
+                margin: 3px;
+                border: 2px solid transparent;
+            }
+            
+            QScrollBar::handle:horizontal:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #777777, stop:1 #888888);
+                border: 2px solid #999999;
+            }
+            
+            QScrollBar::handle:horizontal:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #888888, stop:1 #999999);
+                border: 2px solid #bbbbbb;
+            }
+            
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                width: 0px;
+                background: transparent;
+            }
+            
+            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+                background: rgba(45, 45, 45, 0.1);
             }
         """)
         
@@ -1923,11 +2352,11 @@ class LauncherWindow(MainWindowBase):
             QWidget {
                 background-color: #2F2F2F;
                 border: none;
-                border-radius: 10px;
+                border-radius: 0px;
             }
         """)
         controls_layout = QHBoxLayout(controls_widget)
-        controls_layout.setContentsMargins(10, 0, 10, 0)
+        controls_layout.setContentsMargins(10, 10, 10, 10)
         
         self.btn_add = QPushButton("Add")
         self.btn_add.setFixedWidth(80)
@@ -2055,7 +2484,7 @@ class LauncherWindow(MainWindowBase):
                 background-color: #2a2a2a;
                 color: #ffffff;
                 border: 1px solid #404040;
-                border-radius: 6px;
+                border-radius: 0px;
                 padding: 4px 0px;
                 font-family: 'Segoe UI', Arial, sans-serif;
                 font-size: 12px;
@@ -2167,7 +2596,7 @@ class LauncherWindow(MainWindowBase):
                 background-color: #2a2a2a;
                 color: #ffffff;
                 border: 1px solid #404040;
-                border-radius: 6px;
+                border-radius: 0px;
                 padding: 4px 0px;
                 font-family: 'Segoe UI', Arial, sans-serif;
                 font-size: 12px;
@@ -2193,28 +2622,24 @@ class LauncherWindow(MainWindowBase):
             }
         """)
         
-        add_files_action = menu.addAction("Add Files...")
-        add_folder_action = menu.addAction("Add Folder...")
+
+        icon_settings_action = menu.addAction("Quality Settings")
+        icon_diagnostics_action = menu.addAction("Icon Diagnostics")
         menu.addSeparator()
-        icon_settings_action = menu.addAction("Icon Quality Settings...")
-        icon_diagnostics_action = menu.addAction("Icon Diagnostics...")
-        menu.addSeparator()
-        quit_action = menu.addAction("Exit")
-        
+        refresh_theme_action = menu.addAction("Refresh Dark Theme")
+        menu.addSeparator()        
+
         # Position menu near the button
         button_pos = self.btn_more.mapToGlobal(self.btn_more.rect().bottomLeft())
         action = menu.exec(button_pos)
         
-        if action == add_files_action:
-            self.on_add_files()
-        elif action == add_folder_action:
-            self.on_add_folder()
-        elif action == icon_settings_action:
+        if action == icon_settings_action:
             self._show_icon_quality_settings()
         elif action == icon_diagnostics_action:
             self._show_icon_diagnostics()
-        elif action == quit_action:
-            QApplication.quit()
+        elif action == refresh_theme_action:
+            self._refresh_dark_theme()
+
 
     def open_context_menu(self, pos) -> None:
         """Open context menu for right-click on app items."""
@@ -2230,7 +2655,7 @@ class LauncherWindow(MainWindowBase):
                 background-color: #2a2a2a;
                 color: #ffffff;
                 border: 1px solid #404040;
-                border-radius: 6px;
+                border-radius: 0px;
                 padding: 4px 0px;
                 font-family: 'Segoe UI', Arial, sans-serif;
                 font-size: 12px;

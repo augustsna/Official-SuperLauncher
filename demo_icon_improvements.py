@@ -38,7 +38,7 @@ try:
             """Find a suitable test file for demonstration."""
             # Try common Windows executables
             test_files = [
-                r"C:\Windows\System32\notepad.exe",
+                r"C:\Users\Rock\Desktop\Desktop 2\2. MMO Tools\7. SimpleChrome\SimpleChrome.exe",
                 r"C:\Windows\System32\calc.exe",
                 r"C:\Windows\System32\mspaint.exe",
                 r"C:\Windows\System32\cmd.exe"
@@ -252,7 +252,7 @@ try:
                     quality_settings = {
                         'use_high_quality_scaling': quality != 'Low',
                         'use_dpi_aware_scaling': quality == 'High',
-                        'preferred_source_sizes': [32, 48, 64, 128, 256] if quality == 'High' else [32, 48, 64],
+                        'preferred_source_sizes': [32, 48, 64, 128] if quality == 'High' else [32, 48, 64],
                         'fallback_scaling_method': 'smooth' if quality == 'High' else 'fast',
                         'cache_enabled': True,
                         'cache_size_limit': 100

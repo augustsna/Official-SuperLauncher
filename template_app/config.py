@@ -7,8 +7,8 @@ from typing import Optional, Union, Tuple
 @dataclass
 class AppSettings:
     window_title: str = "Sample App"
-    window_size: Tuple[int, int] = (760, 577)
-    icon_path: str = "template_app/assets/icons/icon2_outlined.png"
+    window_size: Tuple[int, int] = (620, 620)
+    icon_path: str = "template_app/assets/icons/icon.png"
 
 
 def project_root() -> str:
@@ -37,7 +37,7 @@ def load_app_settings(config_path: str = "config.json") -> AppSettings:
     config = load_json(config_path, {}) or {}
     app_settings = config.get("app_settings", {})
     title = app_settings.get("window_title", "Sample App")
-    size = tuple(app_settings.get("window_size", [760, 577]))
+    size = tuple(app_settings.get("window_size", [550, 550]))
     icon = app_settings.get("icon_path", "template_app/assets/icons/icon.png")
     return AppSettings(window_title=title, window_size=size, icon_path=icon)
 
