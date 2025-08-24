@@ -7,12 +7,12 @@ from pathlib import Path
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, QSize, QFileInfo, QMimeData, QTimer
-from PySide6.QtGui import QIcon, QPixmap, QKeySequence, QShortcut, QDrag, QColor
+from PySide6.QtGui import QIcon, QPixmap, QKeySequence, QShortcut, QDrag, QColor, QAction
 from PySide6.QtWidgets import (
     QApplication, QFileIconProvider, QGridLayout, QHBoxLayout, QInputDialog,
     QLabel, QLineEdit, QMenu, QMessageBox,
     QPushButton, QToolButton, QVBoxLayout, QWidget,
-    QFileDialog, QStyle, QSplitter, QScrollArea
+    QFileDialog, QStyle, QSplitter, QScrollArea, QSystemTrayIcon
 )
 
 from template_app.ui.main_window_base import MainWindowBase
@@ -678,7 +678,8 @@ class ConfigStore:
             'width': 620,
             'height': 620
         }
-        return data.get('window_position', default_position)
+        saved_position = data.get('window_position', default_position)
+        return saved_position
     
     def save_window_position(self, x: int, y: int, width: int, height: int) -> None:
         """Save window position and size to config file."""
@@ -1359,6 +1360,9 @@ class LauncherWindow(MainWindowBase):
         from template_app.styles import apply_global_dark_theme
         apply_global_dark_theme()
         
+        # Connect window events for proper theme handling and position saving
+        self._connect_window_events()
+        
         # Clear default UI and build launcher interface
         self._clear_default_ui()
         self._build_launcher_ui()
@@ -1384,6 +1388,9 @@ class LauncherWindow(MainWindowBase):
         
         self._shortcut_refresh_theme = QShortcut(QKeySequence("Ctrl+T"), self)
         self._shortcut_refresh_theme.activated.connect(self._refresh_dark_theme)
+        
+        self._shortcut_minimize_tray = QShortcut(QKeySequence("Ctrl+M"), self)
+        self._shortcut_minimize_tray.activated.connect(self._minimize_to_tray)
         
         
         # Apply dark theme to main window with solid background
@@ -1867,6 +1874,7 @@ MAIN WINDOW SHORTCUTS:
 • Ctrl+I          - Open Icon Quality Settings
 • Ctrl+D          - Open Icon Diagnostics
 • Ctrl+T          - Refresh Dark Theme
+• Ctrl+M          - Minimize to Tray
 • Ctrl+W          - Close window
 
 DIALOG SHORTCUTS:
@@ -1882,6 +1890,10 @@ SEARCH & NAVIGATION:
 • Type in search  - Filter applications in real-time
 • Arrow keys     - Navigate through filtered results
 • Enter          - Launch selected app from search
+
+TRAY ICON:
+• Single-click    - Show/Hide window
+• Right-click     - Context menu (Show/Hide, Exit)
         """)
         
         # Apply modern scrollbar styling to the text edit
@@ -2140,6 +2152,13 @@ SEARCH & NAVIGATION:
             
         except Exception as e:
             print(f"Error refreshing dark theme: {e}")
+    
+    
+    
+    def _minimize_to_tray(self):
+        """Minimize the window to system tray."""
+        self.hide()
+        self._show_tray_notification()
 
     def _connect_window_events(self):
         """Connect window events for proper theme handling."""
@@ -2296,13 +2315,51 @@ SEARCH & NAVIGATION:
             print(f"Error saving window position: {e}")
     
     def _on_close(self, event):
-        """Handle window close event to save final position."""
+        """Handle window close event to save final position and minimize to tray."""
         try:
             self._save_current_position()
         except Exception as e:
             print(f"Error saving window position on close: {e}")
         
-        super().closeEvent(event)
+        # Instead of closing, minimize to tray
+        self.hide()
+        event.ignore()  # Prevent the window from closing
+        
+        # Show a notification that the app is still running in tray
+        self._show_tray_notification()
+    
+    def _show_tray_notification(self):
+        """Show a notification that the app is running in tray."""
+        try:
+            # Find the main application instance to access the tray icon
+            app_instance = self._find_main_app()
+            if app_instance and hasattr(app_instance, 'tray') and app_instance.tray:
+                app_instance.tray.showMessage(
+                    APP_NAME,
+                    "Application minimized to system tray. Click the tray icon to restore.",
+                    QSystemTrayIcon.Information,
+                    3000  # Show for 3 seconds
+                )
+        except Exception as e:
+            print(f"Error showing tray notification: {e}")
+    
+    def _find_main_app(self):
+        """Find the main application instance."""
+        try:
+            # Try to find the main app through the widget hierarchy
+            widget = self
+            while widget:
+                if hasattr(widget, 'config') and hasattr(widget, 'apps'):
+                    # This is the main window, now find the app instance
+                    app = QApplication.instance()
+                    if app and hasattr(app, 'window') and app.window == widget:
+                        return app
+                    break
+                widget = widget.parent()
+            return None
+        except Exception as e:
+            print(f"Error finding main app: {e}")
+            return None
 
     def _apply_icon_settings_dialog(self, dialog, icon_size, widget_size, grid_columns, high_quality, dpi_aware, cache_enabled, cache_size, scaling_method):
         """Apply the icon quality settings from the dialog."""
@@ -2592,6 +2649,29 @@ SEARCH & NAVIGATION:
             }
         """)
 
+        # Add minimize to tray button
+        self.btn_minimize = QPushButton("Minimize to Tray")
+        self.btn_minimize.setFixedWidth(120)
+        self.btn_minimize.setFixedHeight(35)
+        self.btn_minimize.clicked.connect(self.hide)
+        self.btn_minimize.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #404040;
+                padding: 8px 16px;
+                border-radius: 6px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #363636;
+                border-color: #606060;
+            }
+            QPushButton:pressed {
+                background-color: #1a1a1a;
+            }
+        """)
+
         # Add close button
         self.btn_close = QPushButton("Close")
         self.btn_close.setFixedWidth(80)
@@ -2621,6 +2701,7 @@ SEARCH & NAVIGATION:
         controls_layout.addSpacing(5)
         controls_layout.addWidget(self.btn_run)
         controls_layout.addSpacing(5)
+
         controls_layout.addWidget(self.btn_close)
         
         
@@ -2797,6 +2878,8 @@ SEARCH & NAVIGATION:
         shortcuts_action = menu.addAction("Keyboard Shortcuts")
         menu.addSeparator()
         refresh_theme_action = menu.addAction("Refresh Dark Theme")
+        menu.addSeparator()
+        minimize_to_tray_action = menu.addAction("Minimize to Tray")
         menu.addSeparator()        
 
         # Position menu near the button
@@ -2811,6 +2894,9 @@ SEARCH & NAVIGATION:
             self._show_keyboard_shortcuts()
         elif action == refresh_theme_action:
             self._refresh_dark_theme()
+        elif action == minimize_to_tray_action:
+            self.hide()
+            self._show_tray_notification()
 
 
     def open_context_menu(self, pos) -> None:
@@ -3014,7 +3100,7 @@ SEARCH & NAVIGATION:
 
 
 class LauncherApp:
-    """Main launcher application."""
+    """Main launcher application with tray icon support."""
     
     def __init__(self):
         self.app = QApplication.instance() or QApplication(sys.argv)
@@ -3028,6 +3114,110 @@ class LauncherApp:
             print("Failed to load application icon from template_app/assets/icons/icon2.png")
         
         self.window = LauncherWindow()
+        
+        # Initialize tray icon
+        self._setup_tray_icon()
+
+    def _setup_tray_icon(self):
+        """Set up the system tray icon."""
+        # Check if system tray is available
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            print("System tray is not available on this system")
+            self.tray = None
+            return
+        
+        # Create tray icon
+        self.tray = QSystemTrayIcon(self.window)
+        
+        # Set tray icon (use the same icon as the application)
+        app_icon = QIcon("template_app/assets/icons/icon2.png")
+        if not app_icon.isNull():
+            self.tray.setIcon(app_icon)
+        else:
+            # Fallback to system icon if custom icon fails
+            self.tray.setIcon(self.window.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
+        
+        self.tray.setToolTip(APP_NAME)
+        
+        # Create tray context menu
+        menu = QMenu()
+        
+        # Apply dark context menu styling
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #2a2a2a;
+                color: #ffffff;
+                border: 1px solid #404040;
+                border-radius: 0px;
+                padding: 4px 0px;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                font-size: 12px;
+            }
+            QMenu::item {
+                background-color: transparent;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 0px;
+            }
+            QMenu::item:selected {
+                background-color: #404040;
+                color: #ffffff;
+            }
+            QMenu::item:pressed {
+                background-color: #2a2a2a;
+                color: #ffffff;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #404040;
+                margin: 4px 8px;
+            }
+        """)
+        
+        # Add menu actions
+        act_toggle = QAction("Show/Hide", self.tray)
+        act_toggle.triggered.connect(self._toggle_window)
+        
+        act_quit = QAction("Exit", self.tray)
+        act_quit.triggered.connect(self._quit_app)
+        
+        menu.addAction(act_toggle)
+        menu.addSeparator()
+        menu.addAction(act_quit)
+        
+        # Set the context menu
+        self.tray.setContextMenu(menu)
+        
+        # Connect tray icon activation (single click)
+        self.tray.activated.connect(self._on_tray_activated)
+        
+        # Show the tray icon
+        self.tray.show()
+        
+        print("Tray icon initialized successfully")
+
+    def _toggle_window(self):
+        """Toggle window visibility."""
+        if self.window.isVisible():
+            self.window.hide()
+        else:
+            self.window.show()
+            self.window.raise_()
+            self.window.activateWindow()
+
+    def _on_tray_activated(self, reason):
+        """Handle tray icon activation."""
+        if reason == QSystemTrayIcon.Trigger:
+            # Single click - toggle window
+            self._toggle_window()
+
+    def _quit_app(self):
+        """Quit the application."""
+        # Hide tray icon first if it exists
+        if hasattr(self, 'tray') and self.tray:
+            self.tray.hide()
+        # Quit the application
+        QApplication.quit()
 
     def run(self):
         """Run the application."""
@@ -3038,7 +3228,24 @@ class LauncherApp:
 def main():
     """Main entry point."""
     app = LauncherApp()
-    sys.exit(app.run())
+    
+    # Ensure proper cleanup on exit
+    try:
+        exit_code = app.run()
+        # Clean up tray icon before exiting
+        if hasattr(app, 'tray') and app.tray:
+            app.tray.hide()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        # Handle Ctrl+C gracefully
+        if hasattr(app, 'tray') and app.tray:
+            app.tray.hide()
+        sys.exit(0)
+    except Exception as e:
+        print(f"Application error: {e}")
+        if hasattr(app, 'tray') and app.tray:
+            app.tray.hide()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
