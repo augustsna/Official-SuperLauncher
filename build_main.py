@@ -194,25 +194,39 @@ def build_main():
 
 
 def copy_icon_to_output():
-    """Copy the icon file to the output folder"""
-    print("[COPY] Copying icon to output folder...")
+    """Copy the icon files to the output folder"""
+    print("[COPY] Copying icons to output folder...")
     
-    source_icon = 'template_app/assets/icons/icon.png'
     output_dir = 'dist/SuperLauncher/template_app/assets/icons'
+    
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Copy icon.png
+    source_icon = 'template_app/assets/icons/icon.png'
     target_icon = os.path.join(output_dir, 'icon.png')
     
     if os.path.exists(source_icon):
         try:
-            # Ensure output directory exists
-            os.makedirs(output_dir, exist_ok=True)
-            
-            # Copy the icon file
             shutil.copy2(source_icon, target_icon)
-            print(f"   [OK] Icon copied to {target_icon}")
+            print(f"   [OK] icon.png copied to {target_icon}")
         except Exception as e:
-            print(f"   [WARN] Failed to copy icon: {e}")
+            print(f"   [WARN] Failed to copy icon.png: {e}")
     else:
-        print(f"   [WARN] Source icon not found: {source_icon}")
+        print(f"   [WARN] Source icon.png not found: {source_icon}")
+    
+    # Copy icon2.png
+    source_icon2 = 'template_app/assets/icons/icon2.png'
+    target_icon2 = os.path.join(output_dir, 'icon2.png')
+    
+    if os.path.exists(source_icon2):
+        try:
+            shutil.copy2(source_icon2, target_icon2)
+            print(f"   [OK] icon2.png copied to {target_icon2}")
+        except Exception as e:
+            print(f"   [WARN] Failed to copy icon2.png: {e}")
+    else:
+        print(f"   [WARN] Source icon2.png not found: {source_icon2}")
 
 
 def post_build_optimizations():
@@ -280,7 +294,8 @@ def main():
         print("[OK] Main build successful")
         print("\nGenerated files:")
         print("   - dist/SuperLauncher/ - application build")
-        print("   - dist/SuperLauncher/template_app/assets/icons/icon.png - application icon")
+        print("   - dist/SuperLauncher/template_app/assets/icons/icon.png - UI icon")
+        print("   - dist/SuperLauncher/template_app/assets/icons/icon2.png - taskbar icon")
         print("\n[AV] Anti-virus optimizations applied:")
         print("   - Clean imports and exclusions")
         print("   - Disabled UPX compression")

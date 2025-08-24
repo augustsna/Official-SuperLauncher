@@ -976,6 +976,18 @@ class AppGrid(QWidget):
             child = child.parent()
         
         if child and hasattr(child, 'app_data'):
+            # Select the item that was right-clicked
+            self._last_clicked_app = child.app_data
+            self._clear_highlights()
+            child._is_clicked = True
+            child.setStyleSheet("""
+                QWidget {
+                    background-color: #383838;
+                    border-radius: 8px;
+                    border: 1px solid #606060;
+                }
+            """)
+            
             self._show_context_menu(child.app_data, self.content_widget.mapToGlobal(pos))
 
     def _show_context_menu(self, app: AppItem, global_pos):
@@ -1167,6 +1179,14 @@ class LauncherWindow(MainWindowBase):
         
         # Remove default window frame and create custom title bar
         self.setWindowFlags(Qt.FramelessWindowHint)
+        
+        # Set window icon for taskbar (different from UI icons) - after setting window flags
+        window_icon = QIcon("template_app/assets/icons/icon2.png")
+        if not window_icon.isNull():
+            self.setWindowIcon(window_icon)
+            print(f"Window icon set successfully: {window_icon.availableSizes()}")
+        else:
+            print("Failed to load window icon from template_app/assets/icons/icon2.png")
         
         # Enable high-quality rendering attributes
         self.setAttribute(Qt.WA_TranslucentBackground, True)
@@ -1568,15 +1588,21 @@ class LauncherWindow(MainWindowBase):
     def _title_bar_mouse_press(self, event):
         """Handle mouse press on title bar for window dragging."""
         if event.button() == Qt.LeftButton:
+            # Store the initial mouse position relative to the window
             self._drag_start_pos = event.globalPosition().toPoint()
+            self._window_start_pos = self.pos()
             self._dragging = True
     
     def _title_bar_mouse_move(self, event):
         """Handle mouse move on title bar for window dragging."""
         if hasattr(self, '_dragging') and self._dragging:
-            delta = event.globalPosition().toPoint() - self._drag_start_pos
-            self.move(self.pos() + delta)
-            self._drag_start_pos = event.globalPosition().toPoint()
+            # Calculate the new position based on the initial window position and mouse delta
+            current_mouse_pos = event.globalPosition().toPoint()
+            mouse_delta = current_mouse_pos - self._drag_start_pos
+            new_window_pos = self._window_start_pos + mouse_delta
+            
+            # Move the window to the new position
+            self.move(new_window_pos)
     
     def mouseReleaseEvent(self, event):
         """Handle mouse release to stop dragging."""
@@ -1895,8 +1921,9 @@ class LauncherWindow(MainWindowBase):
         controls_widget = QWidget()
         controls_widget.setStyleSheet("""
             QWidget {
-                background-color: #333333;
+                background-color: #2F2F2F;
                 border: none;
+                border-radius: 10px;
             }
         """)
         controls_layout = QHBoxLayout(controls_widget)
@@ -2394,6 +2421,15 @@ class LauncherApp:
     
     def __init__(self):
         self.app = QApplication.instance() or QApplication(sys.argv)
+        
+        # Set application icon globally (affects taskbar)
+        app_icon = QIcon("template_app/assets/icons/icon2.png")
+        if not app_icon.isNull():
+            self.app.setWindowIcon(app_icon)
+            print(f"Application icon set successfully: {app_icon.availableSizes()}")
+        else:
+            print("Failed to load application icon from template_app/assets/icons/icon2.png")
+        
         self.window = LauncherWindow()
 
     def run(self):

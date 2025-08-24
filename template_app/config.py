@@ -8,7 +8,7 @@ from typing import Optional, Union, Tuple
 class AppSettings:
     window_title: str = "Sample App"
     window_size: Tuple[int, int] = (760, 577)
-    icon_path: str = "template_app/assets/icons/icon.png"
+    icon_path: str = "template_app/assets/icons/icon2_outlined.png"
 
 
 def project_root() -> str:
