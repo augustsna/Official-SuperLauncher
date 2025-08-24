@@ -2157,8 +2157,63 @@ TRAY ICON:
     
     def _minimize_to_tray(self):
         """Minimize the window to system tray."""
-        self.hide()
-        self._show_tray_notification()
+        self._minimize_to_tray_with_animation()
+    
+    def _minimize_to_tray_with_animation(self):
+        """Minimize the window to tray with smooth fade-out and scale animation."""
+        try:
+            # Create smooth fade-out and scale animation
+            from PySide6.QtCore import QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
+            
+            # Create opacity animation
+            self._minimize_animation = QPropertyAnimation(self, b"windowOpacity")
+            self._minimize_animation.setDuration(250)  # 250ms animation duration
+            self._minimize_animation.setStartValue(1.0)
+            self._minimize_animation.setEndValue(0.0)
+            self._minimize_animation.setEasingCurve(QEasingCurve.Type.InCubic)  # Smooth easing
+            
+            # Create scale animation using geometry
+            current_geometry = self.geometry()
+            center = current_geometry.center()
+            
+            # End with a slightly smaller size
+            end_width = int(current_geometry.width() * 0.98)
+            end_height = int(current_geometry.height() * 0.98)
+            end_x = center.x() - end_width // 2
+            end_y = center.y() - end_height // 2
+            
+            self._minimize_scale_animation = QPropertyAnimation(self, b"geometry")
+            self._minimize_scale_animation.setDuration(250)  # Same duration as fade
+            self._minimize_scale_animation.setStartValue(current_geometry)
+            self._minimize_scale_animation.setEndValue(current_geometry)
+            self._minimize_scale_animation.setEasingCurve(QEasingCurve.Type.InCubic)  # Smooth easing for scale
+            
+            # Create parallel animation group
+            self._minimize_animation_group = QParallelAnimationGroup()
+            self._minimize_animation_group.addAnimation(self._minimize_animation)
+            self._minimize_animation_group.addAnimation(self._minimize_scale_animation)
+            
+            # Connect animation finished signal to hide the window
+            self._minimize_animation_group.finished.connect(self._complete_minimize_to_tray)
+            
+            # Start the animation
+            self._minimize_animation_group.start()
+            
+        except Exception as e:
+            print(f"Error during minimize animation: {e}")
+            # Fallback to normal hide if animation fails
+            self.hide()
+            self._show_tray_notification()
+    
+    def _complete_minimize_to_tray(self):
+        """Complete the minimize animation by actually hiding the window."""
+        try:
+            self.hide()
+            # Reset opacity to 1.0 for next time
+            self.setWindowOpacity(1.0)
+            self._show_tray_notification()
+        except Exception as e:
+            print(f"Error completing minimize animation: {e}")
 
     def _connect_window_events(self):
         """Connect window events for proper theme handling."""
@@ -2207,7 +2262,12 @@ TRAY ICON:
         except Exception as e:
             print(f"Error saving initial position: {e}")
         
+        # No startup animation - window appears immediately
+        # Animation only for tray restoration
+        
         super().showEvent(event)
+    
+
     
     def _load_window_position(self):
         """Load and apply saved window position."""
@@ -2653,7 +2713,7 @@ TRAY ICON:
         self.btn_minimize = QPushButton("Minimize to Tray")
         self.btn_minimize.setFixedWidth(120)
         self.btn_minimize.setFixedHeight(35)
-        self.btn_minimize.clicked.connect(self.hide)
+        self.btn_minimize.clicked.connect(self._minimize_to_tray_with_animation)
         self.btn_minimize.setStyleSheet("""
             QPushButton {
                 background-color: #2d2d2d;
@@ -2895,8 +2955,7 @@ TRAY ICON:
         elif action == refresh_theme_action:
             self._refresh_dark_theme()
         elif action == minimize_to_tray_action:
-            self.hide()
-            self._show_tray_notification()
+            self._minimize_to_tray_with_animation()
 
 
     def open_context_menu(self, pos) -> None:
@@ -3199,11 +3258,129 @@ class LauncherApp:
     def _toggle_window(self):
         """Toggle window visibility."""
         if self.window.isVisible():
-            self.window.hide()
+            self._hide_window_to_tray_with_animation()
         else:
+            self._show_window_from_tray_with_animation()
+    
+    def _show_window_from_tray_with_animation(self):
+        """Show window from tray with smooth fade-in and scale animation."""
+        try:
+            # Mark that we're restoring from tray
+            self.window._is_restoring_from_tray = True
+            
+            # Set initial opacity to 0 (transparent)
+            self.window.setWindowOpacity(0.0)
+            
+            # Show the window
             self.window.show()
             self.window.raise_()
             self.window.activateWindow()
+            
+            # Create smooth fade-in and scale animation
+            from PySide6.QtCore import QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
+            
+            # Create opacity animation
+            self._fade_animation = QPropertyAnimation(self.window, b"windowOpacity")
+            self._fade_animation.setDuration(350)  # 350ms animation duration
+            self._fade_animation.setStartValue(0.0)
+            self._fade_animation.setEndValue(1.0)
+            self._fade_animation.setEasingCurve(QEasingCurve.Type.OutCubic)  # Smooth easing
+            
+            # Create scale animation using geometry
+            initial_geometry = self.window.geometry()
+            center = initial_geometry.center()
+            
+            # Start with a slightly smaller size
+            start_width = int(initial_geometry.width() * 0.95)
+            start_height = int(initial_geometry.height() * 0.95)
+            start_x = center.x() - start_width // 2
+            start_y = center.y() - start_height // 2
+            
+            self._scale_animation = QPropertyAnimation(self.window, b"geometry")
+            self._scale_animation.setDuration(350)  # Same duration as fade
+            self._scale_animation.setStartValue(self.window.geometry())
+            self._scale_animation.setEndValue(initial_geometry)
+            self._scale_animation.setEasingCurve(QEasingCurve.Type.OutBack)  # Bouncy easing for scale
+            
+            # Create parallel animation group
+            self._tray_restore_animation_group = QParallelAnimationGroup()
+            self._tray_restore_animation_group.addAnimation(self._fade_animation)
+            self._tray_restore_animation_group.addAnimation(self._scale_animation)
+            
+            # Connect animation finished to clear the tray restoration flag
+            self._tray_restore_animation_group.finished.connect(self._clear_tray_restoration_flag)
+            
+            # Start the animation
+            self._tray_restore_animation_group.start()
+            
+        except Exception as e:
+            print(f"Error during smooth animation: {e}")
+            # Fallback to normal show if animation fails
+            self.window.show()
+            self.window.raise_()
+            self.window.activateWindow()
+    
+    def _clear_tray_restoration_flag(self):
+        """Clear the tray restoration flag after animation completes."""
+        try:
+            if hasattr(self.window, '_is_restoring_from_tray'):
+                delattr(self.window, '_is_restoring_from_tray')
+        except Exception as e:
+            print(f"Error clearing tray restoration flag: {e}")
+    
+    def _hide_window_to_tray_with_animation(self):
+        """Hide window to tray with smooth fade-out and scale animation."""
+        try:
+            # Create smooth fade-out and scale animation
+            from PySide6.QtCore import QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
+            
+            # Create opacity animation
+            self._fade_out_animation = QPropertyAnimation(self.window, b"windowOpacity")
+            self._fade_out_animation.setDuration(250)  # 250ms animation duration
+            self._fade_out_animation.setStartValue(1.0)
+            self._fade_out_animation.setEndValue(0.0)
+            self._fade_out_animation.setEasingCurve(QEasingCurve.Type.InCubic)  # Smooth easing
+            
+            # Create scale animation using geometry
+            current_geometry = self.window.geometry()
+            center = current_geometry.center()
+            
+            # End with a slightly smaller size
+            end_width = int(current_geometry.width() * 0.98)
+            end_height = int(current_geometry.height() * 0.98)
+            end_x = center.x() - end_width // 2
+            end_y = center.y() - end_height // 2
+            
+            self._scale_out_animation = QPropertyAnimation(self.window, b"geometry")
+            self._scale_out_animation.setDuration(250)  # Same duration as fade
+            self._scale_out_animation.setStartValue(current_geometry)
+            self._scale_out_animation.setEndValue(current_geometry)
+            self._scale_out_animation.setEasingCurve(QEasingCurve.Type.InCubic)  # Smooth easing for scale
+            
+            # Create parallel animation group
+            self._tray_hide_animation_group = QParallelAnimationGroup()
+            self._tray_hide_animation_group.addAnimation(self._fade_out_animation)
+            self._tray_hide_animation_group.addAnimation(self._scale_out_animation)
+            
+            # Connect animation finished signal to hide the window
+            self._tray_hide_animation_group.finished.connect(self._complete_hide_to_tray)
+            
+            # Start the animation
+            self._tray_hide_animation_group.start()
+            
+        except Exception as e:
+            print(f"Error during hide animation: {e}")
+            # Fallback to normal hide if animation fails
+            self.window.hide()
+    
+    def _complete_hide_to_tray(self):
+        """Complete the hide animation by actually hiding the window."""
+        try:
+            self.window.hide()
+            # Reset opacity to 1.0 for next time
+            self.window.setWindowOpacity(1.0)
+        except Exception as e:
+            print(f"Error completing hide animation: {e}")
 
     def _on_tray_activated(self, reason):
         """Handle tray icon activation."""
