@@ -2185,7 +2185,6 @@ SEARCH & NAVIGATION:
             if not hasattr(self, '_initial_position_saved'):
                 self._save_current_position()
                 self._initial_position_saved = True
-                print("Initial window position saved")
         except Exception as e:
             print(f"Error saving initial position: {e}")
         
@@ -2200,8 +2199,6 @@ SEARCH & NAVIGATION:
             width = position_data.get('width', 620)
             height = position_data.get('height', 620)
             
-            print(f"Loading window position: x={x}, y={y}, width={width}, height={height}")
-            
             # Set window size first
             self.resize(width, height)
             
@@ -2211,7 +2208,6 @@ SEARCH & NAVIGATION:
                 screen = QApplication.primaryScreen()
                 if screen:
                     screen_geometry = screen.geometry()
-                    print(f"Screen geometry: {screen_geometry}")
                     
                     # Adjust position if window would be off-screen
                     if x < screen_geometry.left():
@@ -2223,14 +2219,11 @@ SEARCH & NAVIGATION:
                     if y + height > screen_geometry.bottom():
                         y = screen_geometry.bottom() - height - 50
                     
-                    print(f"Final position: x={x}, y={y}")
                     self.move(x, y)
                 else:
-                    print("No primary screen found, centering window")
                     self._center_window_on_screen()
             else:
                 # Center window on screen if no position saved
-                print("No saved position, centering window")
                 self._center_window_on_screen()
                 
         except Exception as e:
@@ -2293,14 +2286,12 @@ SEARCH & NAVIGATION:
         """Save the current window position and size."""
         try:
             geometry = self.geometry()
-            print(f"Saving window position: x={geometry.x()}, y={geometry.y()}, width={geometry.width()}, height={geometry.height()}")
             self.config.save_window_position(
                 geometry.x(),
                 geometry.y(),
                 geometry.width(),
                 geometry.height()
             )
-            print("Window position saved successfully")
         except Exception as e:
             print(f"Error saving window position: {e}")
     
