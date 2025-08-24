@@ -66,7 +66,8 @@ class MainWindowBase(QWidget):
     def _init_window(self):
         self.setWindowTitle(self.app_settings.window_title)
         self.setMinimumSize(400, 400)
-        self.resize(*self.app_settings.window_size)
+        # Don't set a default window size - let the derived class handle it
+        # self.resize(*self.app_settings.window_size)
         apply_app_style(self)
 
         icon_path = os.path.join(project_root(), self.app_settings.icon_path)

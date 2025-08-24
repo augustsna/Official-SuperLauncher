@@ -2278,7 +2278,7 @@ TRAY ICON:
             width = position_data.get('width', 620)
             height = position_data.get('height', 620)
             
-            # Set window size first
+            # Set window size first (this sets the client area size)
             self.resize(width, height)
             
             # Set window position if coordinates are saved
@@ -2298,6 +2298,7 @@ TRAY ICON:
                     if y + height > screen_geometry.bottom():
                         y = screen_geometry.bottom() - height - 50
                     
+                    # Move the window to the saved position
                     self.move(x, y)
                 else:
                     self._center_window_on_screen()
@@ -2364,12 +2365,13 @@ TRAY ICON:
     def _save_current_position(self):
         """Save the current window position and size."""
         try:
-            geometry = self.geometry()
+            # Use frameGeometry() to account for window decorations (title bar, borders)
+            frame_geometry = self.frameGeometry()
             self.config.save_window_position(
-                geometry.x(),
-                geometry.y(),
-                geometry.width(),
-                geometry.height()
+                frame_geometry.x(),
+                frame_geometry.y(),
+                frame_geometry.width(),
+                frame_geometry.height()
             )
         except Exception as e:
             print(f"Error saving window position: {e}")
