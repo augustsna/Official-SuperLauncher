@@ -2854,6 +2854,7 @@ TRAY ICON:
         """)
 
         controls_layout.addWidget(self.btn_more)
+        controls_layout.addSpacing(5)
         controls_layout.addStretch()
         controls_layout.addWidget(self.btn_add)
         controls_layout.addSpacing(5)

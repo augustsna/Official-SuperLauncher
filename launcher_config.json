@@ -18,16 +18,16 @@
     "use_high_quality_scaling": true,
     "use_dpi_aware_scaling": true,
     "preferred_source_sizes": [
-      48,
       32,
+      48,
       64,
       128
     ],
     "fallback_scaling_method": "smooth",
     "cache_enabled": true,
     "cache_size_limit": 100,
-    "widget_size": 100,
-    "grid_columns": 5,
+    "widget_size": 90,
+    "grid_columns": 3,
     "header_height": 0
   }
 }
