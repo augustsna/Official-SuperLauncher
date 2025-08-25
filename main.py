@@ -2395,19 +2395,29 @@ TRAY ICON:
             print(f"Error saving window position: {e}")
     
     def _on_close(self, event):
-        """Handle window close event to save final position and minimize to tray."""
+        """Handle window close event to save final position and exit program."""
         try:
+            # Save current position before exiting
             self._save_current_position()
         except Exception as e:
             print(f"Error saving window position on close: {e}")
         
+        # Hide tray icon if it exists
+        app_instance = self._find_main_app()
+        if app_instance and hasattr(app_instance, 'tray') and app_instance.tray:
+            app_instance.tray.hide()
+        
+        # Exit the application
+        QApplication.quit()
+    
+    def _on_hide(self):
+        """Handle hide button click to minimize to tray."""
         # Instead of closing, minimize to tray
         self.hide()
-        event.ignore()  # Prevent the window from closing
         
         # Show a notification that the app is still running in tray
         self._show_tray_notification()
-    
+
     def _show_tray_notification(self):
         """Show a notification that the app is running in tray."""
         try:
@@ -2760,10 +2770,10 @@ TRAY ICON:
         """)
 
         # Add close button
-        self.btn_close = QPushButton("Close")
+        self.btn_close = QPushButton("Hide")
         self.btn_close.setFixedWidth(80)
         self.btn_close.setFixedHeight(35)
-        self.btn_close.clicked.connect(self.close)
+        self.btn_close.clicked.connect(self._on_hide)
         self.btn_close.setStyleSheet("""
             QPushButton {
                 background-color: #2d2d2d;
