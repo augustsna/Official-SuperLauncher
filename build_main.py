@@ -67,6 +67,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('template_app/assets', 'template_app/assets'),
+        ('launcher_config.json', '.'),
     ],
     hiddenimports=[
         'PySide6',
