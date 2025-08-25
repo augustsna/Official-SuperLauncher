@@ -27,6 +27,7 @@
     "cache_enabled": true,
     "cache_size_limit": 100,
     "widget_size": 100,
-    "grid_columns": 5
+    "grid_columns": 5,
+    "header_height": 0
   }
 }

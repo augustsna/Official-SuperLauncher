@@ -670,7 +670,8 @@ class ConfigStore:
             'cache_enabled': True,
             'cache_size_limit': 100,
             'widget_size': 100,  # Default widget size (100x100)
-            'grid_columns': 5  # Default number of columns
+            'grid_columns': 5,  # Default number of columns
+            'header_height': 80  # Default header height
         }
         
         # If no icon quality settings exist, save the defaults
@@ -1449,6 +1450,11 @@ class LauncherWindow(MainWindowBase):
         # Also update the AppGrid settings if it exists
         if hasattr(self, 'app_grid'):
             self.app_grid.set_icon_quality_settings(self.icon_quality_settings)
+        
+        # Update header height if it has changed
+        if hasattr(self, 'header_widget'):
+            current_header_height = self.icon_quality_settings.get('header_height', 80)
+            self.header_widget.setFixedHeight(current_header_height)
     
     def _get_current_icon_size(self):
         """Get the current icon size being used in the launcher."""
@@ -1456,12 +1462,13 @@ class LauncherWindow(MainWindowBase):
         return preferred_sizes[0] if preferred_sizes else 48
     
         
-    def _reset_icon_settings(self, icon_size_combo, widget_size_combo, grid_columns_combo, high_quality_cb, dpi_aware_cb, cache_cb, cache_spin, scaling_combo):
+    def _reset_icon_settings(self, icon_size_combo, widget_size_combo, grid_columns_combo, header_height_combo, high_quality_cb, dpi_aware_cb, cache_cb, cache_spin, scaling_combo):
         """Reset icon quality settings to default values."""
         # Reset to default values
         icon_size_combo.setCurrentText("48x48")
         widget_size_combo.setCurrentText("100x100")
         grid_columns_combo.setCurrentText("5")
+        header_height_combo.setCurrentText("80")
         high_quality_cb.setChecked(True)
         dpi_aware_cb.setChecked(True)
         cache_cb.setChecked(True)
@@ -1563,6 +1570,25 @@ class LauncherWindow(MainWindowBase):
         # Add spacing after grid columns section
         layout.addSpacing(8)
         
+        # Header height selection
+        header_height_layout = QHBoxLayout()
+        header_height_layout.addWidget(QLabel("Header height:"))
+        header_height_combo = QComboBox()
+        header_height_combo.addItems(['0', '5', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55', '60', '65', '70', '75', '80', '85', '90', '95', '100', '105', '110', '115', '120'])
+        # Set current selection based on current header height
+        current_header_height = self.icon_quality_settings.get('header_height', 80)
+        header_height_combo.setCurrentText(str(current_header_height))
+        header_height_layout.addWidget(header_height_combo)
+        
+        # Add info label about current header height
+        current_header_info = QLabel(f"Current: {current_header_height}px")
+        current_header_info.setStyleSheet("color: #808080; font-size: 11px;")
+        header_height_layout.addWidget(current_header_info)
+        layout.addLayout(header_height_layout)
+        
+        # Add spacing after header height section
+        layout.addSpacing(8)
+        
         # High quality scaling checkbox
         high_quality_cb = QCheckBox("Use high-quality scaling")
         high_quality_cb.setChecked(self.icon_quality_settings['use_high_quality_scaling'])
@@ -1610,7 +1636,7 @@ class LauncherWindow(MainWindowBase):
         # Buttons
         button_layout = QHBoxLayout()
         reset_btn = QPushButton("Reset to Default")
-        reset_btn.clicked.connect(lambda: self._reset_icon_settings(icon_size_combo, widget_size_combo, grid_columns_combo, high_quality_cb, dpi_aware_cb, cache_cb, cache_spin, scaling_combo))
+        reset_btn.clicked.connect(lambda: self._reset_icon_settings(icon_size_combo, widget_size_combo, grid_columns_combo, header_height_combo, high_quality_cb, dpi_aware_cb, cache_cb, cache_spin, scaling_combo))
         
         apply_btn = QPushButton("Apply")
         cancel_btn = QPushButton("Cancel")
@@ -1623,7 +1649,7 @@ class LauncherWindow(MainWindowBase):
         
         # Connect buttons
         apply_btn.clicked.connect(lambda: self._apply_icon_settings_dialog(
-            dialog, icon_size_combo.currentText(), widget_size_combo.currentText(), grid_columns_combo.currentText(), high_quality_cb.isChecked(), dpi_aware_cb.isChecked(),
+            dialog, icon_size_combo.currentText(), widget_size_combo.currentText(), grid_columns_combo.currentText(), header_height_combo.currentText(), high_quality_cb.isChecked(), dpi_aware_cb.isChecked(),
             cache_cb.isChecked(), cache_spin.value(), scaling_combo.currentText()
         ))
         cancel_btn.clicked.connect(dialog.reject)
@@ -2478,7 +2504,7 @@ TRAY ICON:
             print(f"Error finding main app: {e}")
             return None
 
-    def _apply_icon_settings_dialog(self, dialog, icon_size, widget_size, grid_columns, high_quality, dpi_aware, cache_enabled, cache_size, scaling_method):
+    def _apply_icon_settings_dialog(self, dialog, icon_size, widget_size, grid_columns, header_height, high_quality, dpi_aware, cache_enabled, cache_size, scaling_method):
         """Apply the icon quality settings from the dialog."""
         # Parse icon size from "48x48" format to integer
         try:
@@ -2498,6 +2524,12 @@ TRAY ICON:
         except (ValueError, IndexError):
             selected_grid_columns = 5  # Default fallback
         
+        # Parse header height from string to integer
+        try:
+            selected_header_height = int(header_height)
+        except (ValueError, IndexError):
+            selected_header_height = 80  # Default fallback
+        
         # Update preferred source sizes to prioritize the selected size while preserving original order
         current_preferred_sizes = self.icon_quality_settings.get('preferred_source_sizes', [32, 48, 64, 128])
         # Remove the selected size if it already exists in the list
@@ -2514,7 +2546,8 @@ TRAY ICON:
             'fallback_scaling_method': scaling_method,
             'preferred_source_sizes': new_preferred_sizes,  # Preserve original order with selected size first
             'widget_size': selected_widget_size,  # Update widget size
-            'grid_columns': selected_grid_columns  # Update grid columns
+            'grid_columns': selected_grid_columns,  # Update grid columns
+            'header_height': selected_header_height  # Update header height
         })
         
         # Save settings to config file
@@ -2593,7 +2626,8 @@ TRAY ICON:
         self.header_layout.addWidget(header_content)
         
         # Set header height to accommodate search box and icon size info
-        self.header_widget.setFixedHeight(80)
+        header_height = self.icon_quality_settings.get('header_height', 80)
+        self.header_widget.setFixedHeight(header_height)
         
 
         # Body: App list and controls
