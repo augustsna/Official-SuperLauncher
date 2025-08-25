@@ -610,10 +610,16 @@ class AppItem:
 
 class ConfigStore:
     def __init__(self) -> None:
+        # First try to use launcher_config.json in the current directory
+        current_dir = Path(__file__).parent
+        self.launcher_config_path = current_dir / "launcher_config.json"
+        
+        # Fallback to AppData directory
         config_root = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
         self.dir = config_root / APP_NAME
         self.dir.mkdir(parents=True, exist_ok=True)
         self.path = self.dir / "config.json"
+        
         if not self.path.exists():
             self._write({"apps": []})
 
@@ -644,6 +650,17 @@ class ConfigStore:
     
     def load_icon_quality_settings(self) -> dict:
         """Load icon quality settings from config file."""
+        # First try to load from launcher_config.json if it exists
+        if self.launcher_config_path.exists():
+            try:
+                with self.launcher_config_path.open("r", encoding="utf-8") as f:
+                    launcher_data = json.load(f)
+                    if 'icon_quality_settings' in launcher_data:
+                        return launcher_data['icon_quality_settings']
+            except Exception:
+                pass
+        
+        # Fallback to AppData config
         data = self._read()
         default_settings = {
             'use_high_quality_scaling': True,
@@ -665,9 +682,25 @@ class ConfigStore:
     
     def save_icon_quality_settings(self, settings: dict) -> None:
         """Save icon quality settings to config file."""
+        # Save to AppData config
         data = self._read()
         data['icon_quality_settings'] = settings
         self._write(data)
+        
+        # Also update launcher_config.json if it exists
+        if self.launcher_config_path.exists():
+            try:
+                with self.launcher_config_path.open("r", encoding="utf-8") as f:
+                    launcher_data = json.load(f)
+                
+                # Update the icon quality settings
+                launcher_data['icon_quality_settings'] = settings
+                
+                # Write back to launcher_config.json
+                with self.launcher_config_path.open("w", encoding="utf-8") as f:
+                    json.dump(launcher_data, f, indent=2)
+            except Exception:
+                pass
     
     def load_window_position(self) -> dict:
         """Load window position and size from config file."""
@@ -844,6 +877,10 @@ class AppGrid(QWidget):
     def populate(self, apps: List[AppItem]) -> None:
         """Populate the grid with applications."""
         self.apps = apps
+        # Ensure IconExtractor has the current quality settings before building widgets
+        if hasattr(self, 'icon_quality_settings') and self.icon_quality_settings:
+            IconExtractor.set_icon_quality_settings(self.icon_quality_settings)
+        
         self._clear_grid()
         self._build_grid()
         # Ensure no widgets appear focused on startup
@@ -1435,7 +1472,7 @@ class LauncherWindow(MainWindowBase):
         default_settings = {
             'use_high_quality_scaling': True,
             'use_dpi_aware_scaling': True,
-            'preferred_source_sizes': [48, 32, 64, 128],  # 48 first as it's selected
+            'preferred_source_sizes': [32, 48, 64, 128],  # Original default order
             'fallback_scaling_method': 'smooth',
             'cache_enabled': True,
             'cache_size_limit': 100,
@@ -2424,14 +2461,21 @@ TRAY ICON:
         except (ValueError, IndexError):
             selected_grid_columns = 5  # Default fallback
         
-        # Update preferred source sizes to prioritize the selected size
+        # Update preferred source sizes to prioritize the selected size while preserving original order
+        current_preferred_sizes = self.icon_quality_settings.get('preferred_source_sizes', [32, 48, 64, 128])
+        # Remove the selected size if it already exists in the list
+        if selected_size in current_preferred_sizes:
+            current_preferred_sizes.remove(selected_size)
+        # Put the selected size first, then preserve the rest of the original order
+        new_preferred_sizes = [selected_size] + current_preferred_sizes
+        
         self.icon_quality_settings.update({
             'use_high_quality_scaling': high_quality,
             'use_dpi_aware_scaling': dpi_aware,
             'cache_enabled': cache_enabled,
             'cache_size_limit': cache_size,
             'fallback_scaling_method': scaling_method,
-            'preferred_source_sizes': [selected_size, 32, 48, 64, 128],  # Put selected size first
+            'preferred_source_sizes': new_preferred_sizes,  # Preserve original order with selected size first
             'widget_size': selected_widget_size,  # Update widget size
             'grid_columns': selected_grid_columns  # Update grid columns
         })
@@ -3052,6 +3096,11 @@ TRAY ICON:
         if reply == QMessageBox.Yes:
             self.apps = [a for a in self.apps if a.path != app.path]
             self.config.save_apps(self.apps)
+            
+            # Update AppGrid with current icon quality settings BEFORE populating
+            self.app_grid.set_icon_quality_settings(self.icon_quality_settings)
+            
+            # Now populate with the updated settings
             self.app_grid.populate(self.apps)
 
     def open_location(self, path: str) -> None:
