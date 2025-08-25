@@ -1367,6 +1367,9 @@ class LauncherWindow(MainWindowBase):
         # Apply icon quality settings
         self._apply_icon_quality_settings()
         
+        # Initialize force quit flag
+        self._force_quit = False
+        
         # Override window title and size for launcher
         self.setWindowTitle(APP_NAME)
         
@@ -2273,8 +2276,7 @@ TRAY ICON:
             # Connect resize event to save window position
             self.resizeEvent = self._on_resize
             
-            # Connect close event to save window position
-            self.closeEvent = self._on_close_alt
+            # Close event is now handled by the closeEvent method override
             
             print("Window events connected successfully")
             
@@ -2437,37 +2439,43 @@ TRAY ICON:
         QApplication.quit()
     
     def _on_close_alt(self, event):
-        """Handle window close event to save final position and exit program."""
-        # Instead of closing, minimize to tray
-        self.hide()
+        """Handle window close event to minimize program instead of closing."""
+        # Instead of closing, minimize the program
+        self.setWindowState(Qt.WindowMinimized)
         event.ignore()  # Prevent the window from closing
 
-        # Show a notification that the app is still running in tray
-        self._show_tray_notification()
-    
-    def _on_hide(self):
-        """Handle hide button click to minimize to tray."""
-        # Instead of closing, minimize to tray
-        self.hide()
-        
-        # Show a notification that the app is still running in tray
-        self._show_tray_notification()
+    def closeEvent(self, event):
+        """Override closeEvent to handle both minimize and quit scenarios."""
+        if hasattr(self, '_force_quit') and self._force_quit:
+            # User wants to quit the application
+            self._force_quit = False  # Reset flag
+            event.accept()  # Allow the window to close
+            # The application will quit when the main window is closed
+        else:
+            # User clicked the title bar X button - minimize instead
+            self._on_close_alt(event)
 
-    def _on_hide_alt(self):
-        """Handle window close event to save final position and exit program."""
+    
+    
+    
+    def _quit_app(self):
+        """Quit the application."""
+        # Save current position before exiting
         try:
-            # Save current position before exiting
             self._save_current_position()
         except Exception as e:
-            print(f"Error saving window position on close: {e}")
+            print(f"Error saving window position on exit: {e}")
         
         # Hide tray icon if it exists
         app_instance = self._find_main_app()
         if app_instance and hasattr(app_instance, 'tray') and app_instance.tray:
             app_instance.tray.hide()
         
-        # Exit the application
-        QApplication.quit()
+        # Set a flag to indicate we want to quit
+        self._force_quit = True
+        
+        # Close the window (this will trigger closeEvent)
+        self.close()
 
 
 
@@ -2834,7 +2842,7 @@ TRAY ICON:
         self.btn_close = QPushButton("Exit")
         self.btn_close.setFixedWidth(80)
         self.btn_close.setFixedHeight(35)
-        self.btn_close.clicked.connect(self._on_hide_alt)
+        self.btn_close.clicked.connect(self._quit_app)
         self.btn_close.setStyleSheet("""
             QPushButton {
                 background-color: #2d2d2d;
@@ -3490,8 +3498,15 @@ class LauncherApp:
         # Hide tray icon first if it exists
         if hasattr(self, 'tray') and self.tray:
             self.tray.hide()
-        # Quit the application
-        QApplication.quit()
+        
+        # Set the force quit flag in the window and close it
+        # This will trigger the window's closeEvent with proper cleanup
+        if hasattr(self, 'window') and self.window:
+            self.window._force_quit = True
+            self.window.close()
+        else:
+            # Fallback if window reference is not available
+            QApplication.quit()
 
     def run(self):
         """Run the application."""
