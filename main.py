@@ -999,18 +999,55 @@ class AppGrid(QWidget):
         layout.addWidget(icon_label)
         layout.addWidget(text_label)
         
-        # Connect mouse events
-        widget.mousePressEvent = lambda event, w=widget: self._on_app_mouse_press(event, w)
-        widget.mouseMoveEvent = lambda event, w=widget: self._on_app_mouse_move(event, w)
-        widget.mouseDoubleClickEvent = lambda event, w=widget: self._on_app_double_clicked(event, w)
-        widget.enterEvent = lambda event, w=widget: self._on_app_hover_enter(event, w)
-        widget.leaveEvent = lambda event, w=widget: self._on_app_hover_leave(event, w)
+        # Store widget reference for event handlers to avoid circular references
+        widget._grid_parent = self
+        
+        # Connect mouse events using functools.partial to avoid lambda circular references
+        import functools
+        widget.mousePressEvent = functools.partial(self._on_app_mouse_press_wrapper, widget)
+        widget.mouseMoveEvent = functools.partial(self._on_app_mouse_move_wrapper, widget)
+        widget.mouseDoubleClickEvent = functools.partial(self._on_app_double_clicked_wrapper, widget)
+        widget.enterEvent = functools.partial(self._on_app_hover_enter_wrapper, widget)
+        widget.leaveEvent = functools.partial(self._on_app_hover_leave_wrapper, widget)
         # Add drag and drop event handlers
-        widget.dragEnterEvent = lambda event, w=widget: self._on_app_drag_enter(event, w)
-        widget.dragLeaveEvent = lambda event, w=widget: self._on_app_drag_leave(event, w)
-        widget.dropEvent = lambda event, w=widget: self._on_app_drop(event, w)
+        widget.dragEnterEvent = functools.partial(self._on_app_drag_enter_wrapper, widget)
+        widget.dragLeaveEvent = functools.partial(self._on_app_drag_leave_wrapper, widget)
+        widget.dropEvent = functools.partial(self._on_app_drop_wrapper, widget)
         
         return widget
+
+    # Event handler wrappers to avoid circular references from lambda functions
+    def _on_app_mouse_press_wrapper(self, widget, event):
+        """Wrapper for mouse press event."""
+        return self._on_app_mouse_press(event, widget)
+    
+    def _on_app_mouse_move_wrapper(self, widget, event):
+        """Wrapper for mouse move event."""
+        return self._on_app_mouse_move(event, widget)
+    
+    def _on_app_double_clicked_wrapper(self, widget, event):
+        """Wrapper for double click event."""
+        return self._on_app_double_clicked(event, widget)
+    
+    def _on_app_hover_enter_wrapper(self, widget, event):
+        """Wrapper for hover enter event."""
+        return self._on_app_hover_enter(event, widget)
+    
+    def _on_app_hover_leave_wrapper(self, widget, event):
+        """Wrapper for hover leave event."""
+        return self._on_app_hover_leave(event, widget)
+    
+    def _on_app_drag_enter_wrapper(self, widget, event):
+        """Wrapper for drag enter event."""
+        return self._on_app_drag_enter(event, widget)
+    
+    def _on_app_drag_leave_wrapper(self, widget, event):
+        """Wrapper for drag leave event."""
+        return self._on_app_drag_leave(event, widget)
+    
+    def _on_app_drop_wrapper(self, widget, event):
+        """Wrapper for drop event."""
+        return self._on_app_drop(event, widget)
 
     def _on_app_clicked(self, event, widget):
         """Handle single click on app widget."""
@@ -1047,7 +1084,14 @@ class AppGrid(QWidget):
     def _on_app_hover_leave(self, event, widget):
         """Handle mouse leave on app widget."""
         if not hasattr(widget, '_is_clicked') or not widget._is_clicked:
-            widget.setStyleSheet("")
+            # Return to default app widget styling
+            widget.setStyleSheet("""
+                QWidget {
+                    background-color: #333333;
+                    border-radius: 8px;
+                    border: 1px solid transparent;
+                }
+            """)
 
     def _on_app_mouse_press(self, event, widget):
         """Handle mouse press on app widget - handles both click and drag start."""
@@ -1120,7 +1164,14 @@ class AppGrid(QWidget):
         """Handle drag leave event."""
         # Clear the drop highlight
         if not hasattr(widget, '_is_clicked') or not widget._is_clicked:
-            widget.setStyleSheet("")
+            # Return to default app widget styling
+            widget.setStyleSheet("""
+                QWidget {
+                    background-color: #333333;
+                    border-radius: 8px;
+                    border: 1px solid transparent;
+                }
+            """)
         else:
             # Restore clicked state styling
             widget.setStyleSheet("""
@@ -1151,8 +1202,14 @@ class AppGrid(QWidget):
                     if main_window and hasattr(main_window, 'config'):
                         main_window.config.save_apps(self.apps)
                     
-                    # Clear the highlight
-                    widget.setStyleSheet("")
+                    # Clear the highlight - return to default styling
+                    widget.setStyleSheet("""
+                        QWidget {
+                            background-color: #333333;
+                            border-radius: 8px;
+                            border: 1px solid transparent;
+                        }
+                    """)
                     
             except (ValueError, IndexError):
                 pass
@@ -1277,7 +1334,14 @@ class AppGrid(QWidget):
     def _clear_highlights(self):
         """Clear all widget highlights."""
         for widget in self.app_widgets:
-            widget.setStyleSheet("")
+            # Reset to default app widget styling
+            widget.setStyleSheet("""
+                QWidget {
+                    background-color: #333333;
+                    border-radius: 8px;
+                    border: 1px solid transparent;
+                }
+            """)
             if hasattr(widget, '_is_clicked'):
                 widget._is_clicked = False
 
@@ -2228,6 +2292,11 @@ TRAY ICON:
     def _minimize_to_tray_with_animation(self):
         """Minimize the window to tray with smooth fade-out animation."""
         try:
+            # Clean up any existing animation
+            if hasattr(self, '_minimize_animation') and self._minimize_animation:
+                self._minimize_animation.stop()
+                self._minimize_animation.deleteLater()
+            
             # Create smooth fade-out animation
             from PySide6.QtCore import QPropertyAnimation, QEasingCurve
             
@@ -2257,6 +2326,11 @@ TRAY ICON:
             # Reset opacity to 1.0 for next time
             self.setWindowOpacity(1.0)
             self._show_tray_notification()
+            
+            # Clean up animation object
+            if hasattr(self, '_minimize_animation') and self._minimize_animation:
+                self._minimize_animation.deleteLater()
+                self._minimize_animation = None
         except Exception as e:
             print(f"Error completing minimize animation: {e}")
 
@@ -2447,7 +2521,8 @@ TRAY ICON:
     def closeEvent(self, event):
         """Override closeEvent to handle both minimize and quit scenarios."""
         if hasattr(self, '_force_quit') and self._force_quit:
-            # User wants to quit the application
+            # User wants to quit the application - clean up resources
+            self._cleanup_resources()
             self._force_quit = False  # Reset flag
             event.accept()  # Allow the window to close
             # The application will quit when the main window is closed
@@ -2455,8 +2530,29 @@ TRAY ICON:
             # User clicked the title bar X button - minimize instead
             self._on_close_alt(event)
 
-    
-    
+    def _cleanup_resources(self):
+        """Clean up all resources to prevent memory leaks."""
+        try:
+            # Stop and clean up timers
+            if hasattr(self, '_position_save_timer') and self._position_save_timer:
+                self._position_save_timer.stop()
+                self._position_save_timer.deleteLater()
+                self._position_save_timer = None
+            
+            if hasattr(self, '_resize_save_timer') and self._resize_save_timer:
+                self._resize_save_timer.stop()
+                self._resize_save_timer.deleteLater()
+                self._resize_save_timer = None
+            
+            # Stop and clean up animations
+            if hasattr(self, '_minimize_animation') and self._minimize_animation:
+                self._minimize_animation.stop()
+                self._minimize_animation.deleteLater()
+                self._minimize_animation = None
+            
+            print("Resources cleaned up successfully")
+        except Exception as e:
+            print(f"Error cleaning up resources: {e}")
     
     def _quit_app(self):
         """Quit the application."""
@@ -3404,6 +3500,11 @@ class LauncherApp:
     def _show_window_from_tray_with_animation(self):
         """Show window from tray with smooth fade-in animation."""
         try:
+            # Clean up any existing fade animation
+            if hasattr(self, '_fade_animation') and self._fade_animation:
+                self._fade_animation.stop()
+                self._fade_animation.deleteLater()
+            
             # Mark that we're restoring from tray
             self.window._is_restoring_from_tray = True
             
@@ -3451,12 +3552,22 @@ class LauncherApp:
                 delattr(self.window, '_is_restoring_from_tray')
             # Ensure opacity is set to 1.0 after animation
             self.window.setWindowOpacity(1.0)
+            
+            # Clean up fade animation object
+            if hasattr(self, '_fade_animation') and self._fade_animation:
+                self._fade_animation.deleteLater()
+                self._fade_animation = None
         except Exception as e:
             print(f"Error clearing tray restoration flag: {e}")
     
     def _hide_window_to_tray_with_animation(self):
         """Hide window to tray with smooth fade-out animation."""
         try:
+            # Clean up any existing fade out animation
+            if hasattr(self, '_fade_out_animation') and self._fade_out_animation:
+                self._fade_out_animation.stop()
+                self._fade_out_animation.deleteLater()
+            
             # Create smooth fade-out animation
             from PySide6.QtCore import QPropertyAnimation, QEasingCurve
             
@@ -3484,6 +3595,11 @@ class LauncherApp:
             self.window.hide()
             # Reset opacity to 1.0 for next time
             self.window.setWindowOpacity(1.0)
+            
+            # Clean up fade out animation object
+            if hasattr(self, '_fade_out_animation') and self._fade_out_animation:
+                self._fade_out_animation.deleteLater()
+                self._fade_out_animation = None
         except Exception as e:
             print(f"Error completing hide animation: {e}")
 
@@ -3495,6 +3611,9 @@ class LauncherApp:
 
     def _quit_app(self):
         """Quit the application."""
+        # Clean up launcher app animations
+        self._cleanup_launcher_animations()
+        
         # Hide tray icon first if it exists
         if hasattr(self, 'tray') and self.tray:
             self.tray.hide()
@@ -3507,6 +3626,24 @@ class LauncherApp:
         else:
             # Fallback if window reference is not available
             QApplication.quit()
+    
+    def _cleanup_launcher_animations(self):
+        """Clean up launcher app animation objects."""
+        try:
+            # Stop and clean up fade animations
+            if hasattr(self, '_fade_animation') and self._fade_animation:
+                self._fade_animation.stop()
+                self._fade_animation.deleteLater()
+                self._fade_animation = None
+            
+            if hasattr(self, '_fade_out_animation') and self._fade_out_animation:
+                self._fade_out_animation.stop()
+                self._fade_out_animation.deleteLater()
+                self._fade_out_animation = None
+            
+            print("Launcher animations cleaned up successfully")
+        except Exception as e:
+            print(f"Error cleaning up launcher animations: {e}")
 
     def run(self):
         """Run the application."""
