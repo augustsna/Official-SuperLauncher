@@ -4,6 +4,3 @@ PySide6>=6.4.0
 # Install with: pip install pywin32 pillow
 pywin32>=306; sys_platform == "win32"
 pillow>=10.0.0
-
-# Memory monitoring dependency
-psutil>=5.9.0

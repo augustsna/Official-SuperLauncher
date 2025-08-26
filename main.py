@@ -36,10 +36,6 @@ try:
 except ImportError:
     HAS_PIL = False
 
-# Add memory monitoring imports
-import gc
-import weakref
-import time
 
 APP_NAME = "SuperLauncher"
 
@@ -50,9 +46,6 @@ class IconExtractor:
     # Class-level cache for icons to improve performance
     _icon_cache = {}
     _cache_size_limit = 100  # Maximum number of cached icons
-    _cache_access_times = {}  # Track when cache entries were last accessed
-    _last_cleanup_time = time.time()
-    _cleanup_interval = 60  # Cleanup every 60 seconds
     
     @staticmethod
     def _get_cache_key(file_path: str, sizes: List[int] = None) -> str:
@@ -66,92 +59,24 @@ class IconExtractor:
         """Add an icon to the cache."""
         cache_key = IconExtractor._get_cache_key(file_path, sizes)
         
-        # Check if cleanup is needed
-        IconExtractor._check_cleanup_needed()
-        
-        # Implement improved LRU cache
+        # Implement simple LRU cache
         if len(IconExtractor._icon_cache) >= IconExtractor._cache_size_limit:
-            IconExtractor._cleanup_cache()
+            # Remove oldest entry (simple approach - remove first item)
+            oldest_key = next(iter(IconExtractor._icon_cache))
+            del IconExtractor._icon_cache[oldest_key]
         
         IconExtractor._icon_cache[cache_key] = icon
-        IconExtractor._cache_access_times[cache_key] = time.time()
     
     @staticmethod
     def _get_from_cache(file_path: str, sizes: List[int] = None) -> Optional[QIcon]:
         """Get an icon from the cache if available."""
         cache_key = IconExtractor._get_cache_key(file_path, sizes)
-        icon = IconExtractor._icon_cache.get(cache_key)
-        if icon:
-            # Update access time for LRU tracking
-            IconExtractor._cache_access_times[cache_key] = time.time()
-        return icon
+        return IconExtractor._icon_cache.get(cache_key)
     
     @staticmethod
     def clear_cache() -> None:
         """Clear the icon cache."""
         IconExtractor._icon_cache.clear()
-        IconExtractor._cache_access_times.clear()
-        IconExtractor._last_cleanup_time = time.time()
-    
-    @staticmethod
-    def _check_cleanup_needed() -> None:
-        """Check if cache cleanup is needed based on time interval."""
-        current_time = time.time()
-        if current_time - IconExtractor._last_cleanup_time > IconExtractor._cleanup_interval:
-            IconExtractor._cleanup_cache()
-            IconExtractor._last_cleanup_time = current_time
-    
-    @staticmethod
-    def _cleanup_cache() -> None:
-        """Intelligently clean up the icon cache."""
-        if len(IconExtractor._icon_cache) <= IconExtractor._cache_size_limit // 2:
-            return  # No cleanup needed
-        
-        # Sort by access time (oldest first)
-        sorted_items = sorted(
-            IconExtractor._cache_access_times.items(),
-            key=lambda x: x[1]
-        )
-        
-        # Remove oldest entries to reduce cache to 75% of limit
-        target_size = int(IconExtractor._cache_size_limit * 0.75)
-        items_to_remove = len(sorted_items) - target_size
-        
-        for i in range(items_to_remove):
-            key = sorted_items[i][0]
-            del IconExtractor._icon_cache[key]
-            del IconExtractor._cache_access_times[key]
-        
-        # Force garbage collection after cleanup
-        gc.collect()
-    
-    @staticmethod
-    def get_cache_stats() -> dict:
-        """Get cache statistics for monitoring."""
-        return {
-            'cache_size': len(IconExtractor._icon_cache),
-            'cache_limit': IconExtractor._cache_size_limit,
-            'access_times_count': len(IconExtractor._cache_access_times),
-            'last_cleanup': IconExtractor._last_cleanup_time,
-            'memory_usage_mb': IconExtractor._estimate_cache_memory_usage()
-        }
-    
-    @staticmethod
-    def _estimate_cache_memory_usage() -> float:
-        """Estimate memory usage of the cache in MB."""
-        try:
-            total_memory = 0
-            for icon in IconExtractor._icon_cache.values():
-                # Estimate memory usage based on available sizes
-                sizes = icon.availableSizes()
-                for size in sizes:
-                    # Rough estimate: 4 bytes per pixel for RGBA
-                    pixels = size.width() * size.height()
-                    total_memory += pixels * 4
-            
-            return total_memory / (1024 * 1024)  # Convert to MB
-        except Exception:
-            return 0.0
     
     @staticmethod
     def extract_icon(file_path: str, size: int = 32) -> QIcon:
@@ -1074,66 +999,18 @@ class AppGrid(QWidget):
         layout.addWidget(icon_label)
         layout.addWidget(text_label)
         
-        # Connect mouse events using proper method references to prevent memory leaks
-        widget.mousePressEvent = self._create_mouse_press_handler(widget)
-        widget.mouseMoveEvent = self._create_mouse_move_handler(widget)
-        widget.mouseDoubleClickEvent = self._create_mouse_double_click_handler(widget)
-        widget.enterEvent = self._create_enter_event_handler(widget)
-        widget.leaveEvent = self._create_leave_event_handler(widget)
+        # Connect mouse events
+        widget.mousePressEvent = lambda event, w=widget: self._on_app_mouse_press(event, w)
+        widget.mouseMoveEvent = lambda event, w=widget: self._on_app_mouse_move(event, w)
+        widget.mouseDoubleClickEvent = lambda event, w=widget: self._on_app_double_clicked(event, w)
+        widget.enterEvent = lambda event, w=widget: self._on_app_hover_enter(event, w)
+        widget.leaveEvent = lambda event, w=widget: self._on_app_hover_leave(event, w)
         # Add drag and drop event handlers
-        widget.dragEnterEvent = self._create_drag_enter_handler(widget)
-        widget.dragLeaveEvent = self._create_drag_leave_handler(widget)
-        widget.dropEvent = self._create_drop_handler(widget)
+        widget.dragEnterEvent = lambda event, w=widget: self._on_app_drag_enter(event, w)
+        widget.dragLeaveEvent = lambda event, w=widget: self._on_app_drag_leave(event, w)
+        widget.dropEvent = lambda event, w=widget: self._on_app_drop(event, w)
         
         return widget
-
-    def _create_mouse_press_handler(self, widget):
-        """Create a mouse press event handler to prevent memory leaks."""
-        def handler(event):
-            self._on_app_mouse_press(event, widget)
-        return handler
-    
-    def _create_mouse_move_handler(self, widget):
-        """Create a mouse move event handler to prevent memory leaks."""
-        def handler(event):
-            self._on_app_mouse_move(event, widget)
-        return handler
-    
-    def _create_mouse_double_click_handler(self, widget):
-        """Create a mouse double click event handler to prevent memory leaks."""
-        def handler(event):
-            self._on_app_double_clicked(event, widget)
-        return handler
-    
-    def _create_enter_event_handler(self, widget):
-        """Create an enter event handler to prevent memory leaks."""
-        def handler(event):
-            self._on_app_hover_enter(event, widget)
-        return handler
-    
-    def _create_leave_event_handler(self, widget):
-        """Create a leave event handler to prevent memory leaks."""
-        def handler(event):
-            self._on_app_hover_leave(event, widget)
-        return handler
-    
-    def _create_drag_enter_handler(self, widget):
-        """Create a drag enter event handler to prevent memory leaks."""
-        def handler(event):
-            self._on_app_drag_enter(event, widget)
-        return handler
-    
-    def _create_drag_leave_handler(self, widget):
-        """Create a drag leave event handler to prevent memory leaks."""
-        def handler(event):
-            self._on_app_drag_leave(event, widget)
-        return handler
-    
-    def _create_drop_handler(self, widget):
-        """Create a drop event handler to prevent memory leaks."""
-        def handler(event):
-            self._on_app_drop(event, widget)
-        return handler
 
     def _on_app_clicked(self, event, widget):
         """Handle single click on app widget."""
@@ -1569,9 +1446,6 @@ class LauncherWindow(MainWindowBase):
                 border: none;
             }
         """)
-        
-        # Set up idle memory management
-        self._setup_idle_memory_management()
     
     def _apply_icon_quality_settings(self):
         """Apply the current icon quality settings to the IconExtractor."""
@@ -2004,16 +1878,6 @@ class LauncherWindow(MainWindowBase):
         clear_cache_btn.clicked.connect(self._clear_icon_cache)
         button_layout.addWidget(clear_cache_btn)
         
-        # Memory diagnostics button
-        memory_diagnostics_btn = QPushButton("Memory Diagnostics")
-        memory_diagnostics_btn.clicked.connect(self._show_memory_diagnostics)
-        button_layout.addWidget(memory_diagnostics_btn)
-        
-        # Manual cleanup button
-        manual_cleanup_btn = QPushButton("Manual Cleanup")
-        manual_cleanup_btn.clicked.connect(self._manual_memory_cleanup)
-        button_layout.addWidget(manual_cleanup_btn)
-        
         # Refresh button
         refresh_btn = QPushButton("Refresh App Grid")
         refresh_btn.clicked.connect(lambda: self._refresh_app_grid())
@@ -2206,73 +2070,6 @@ TRAY ICON:
             QMessageBox.information(self, "Cache Cleared", "Icon cache has been cleared successfully.")
         except Exception as e:
             QMessageBox.warning(self, "Cache Error", f"Error clearing cache:\n{str(e)}")
-    
-    def _show_memory_diagnostics(self):
-        """Show memory usage diagnostics."""
-        try:
-            # Get cache statistics
-            cache_stats = IconExtractor.get_cache_stats()
-            
-            # Get system memory info if available
-            try:
-                import psutil
-                process = psutil.Process()
-                process_memory = process.memory_info().rss / 1024 / 1024  # MB
-                system_memory = psutil.virtual_memory()
-                system_total = system_memory.total / 1024 / 1024 / 1024  # GB
-                system_available = system_memory.available / 1024 / 1024 / 1024  # GB
-                system_percent = system_memory.percent
-            except ImportError:
-                process_memory = "N/A (psutil not available)"
-                system_total = "N/A"
-                system_available = "N/A"
-                system_percent = "N/A"
-            
-            # Create diagnostic message
-            message = f"""Memory Diagnostics:
-
-Icon Cache:
-• Cache size: {cache_stats['cache_size']}/{cache_stats['cache_limit']}
-• Estimated memory usage: {cache_stats['memory_usage_mb']:.2f} MB
-• Last cleanup: {time.strftime('%H:%M:%S', time.localtime(cache_stats['last_cleanup']))}
-
-Process Memory:
-• Process memory usage: {process_memory:.1f} MB
-
-System Memory:
-• Total system memory: {system_total:.1f} GB
-• Available memory: {system_available:.1f} GB
-• Memory usage: {system_percent:.1f}%
-
-Recommendations:
-• Clear cache if memory usage is high
-• Restart application if process memory exceeds 500MB
-• Monitor system memory availability"""
-            
-            QMessageBox.information(self, "Memory Diagnostics", message)
-            
-        except Exception as e:
-            QMessageBox.warning(self, "Diagnostics Error", f"Error getting memory diagnostics:\n{str(e)}")
-    
-    def _manual_memory_cleanup(self):
-        """Manually trigger memory cleanup."""
-        try:
-            # Perform aggressive cleanup
-            self._perform_aggressive_cleanup()
-            
-            # Get updated stats
-            cache_stats = IconExtractor.get_cache_stats()
-            
-            QMessageBox.information(
-                self, 
-                "Manual Cleanup Complete", 
-                f"Memory cleanup completed successfully.\n\n"
-                f"Current cache size: {cache_stats['cache_size']}/{cache_stats['cache_limit']}\n"
-                f"Estimated memory usage: {cache_stats['memory_usage_mb']:.2f} MB"
-            )
-            
-        except Exception as e:
-            QMessageBox.warning(self, "Cleanup Error", f"Error during manual cleanup:\n{str(e)}")
     
     def _refresh_app_grid(self):
         """Refresh the app grid to show updated icons."""
@@ -2649,9 +2446,6 @@ Recommendations:
 
     def closeEvent(self, event):
         """Override closeEvent to handle both minimize and quit scenarios."""
-        # Clean up timers and resources before closing
-        self._cleanup_resources()
-        
         if hasattr(self, '_force_quit') and self._force_quit:
             # User wants to quit the application
             self._force_quit = False  # Reset flag
@@ -2778,107 +2572,6 @@ Recommendations:
         
         
         dialog.accept()
-    
-    def _setup_idle_memory_management(self):
-        """Set up periodic memory cleanup during idle periods."""
-        try:
-            # Create cleanup timer for periodic memory management
-            self._cleanup_timer = QTimer()
-            self._cleanup_timer.setInterval(30000)  # 30 seconds
-            self._cleanup_timer.timeout.connect(self._perform_idle_cleanup)
-            self._cleanup_timer.start()
-            
-            # Create memory monitoring timer
-            self._memory_monitor_timer = QTimer()
-            self._memory_monitor_timer.setInterval(60000)  # 1 minute
-            self._memory_monitor_timer.timeout.connect(self._monitor_memory_usage)
-            self._memory_monitor_timer.start()
-            
-            print("Idle memory management initialized")
-        except Exception as e:
-            print(f"Error setting up idle memory management: {e}")
-    
-    def _perform_idle_cleanup(self):
-        """Perform memory cleanup during idle periods."""
-        try:
-            # Clear unused icon cache entries
-            IconExtractor._cleanup_cache()
-            
-            # Force garbage collection
-            gc.collect()
-            
-            # Log cleanup activity
-            cache_stats = IconExtractor.get_cache_stats()
-            print(f"Idle cleanup completed - Cache: {cache_stats['cache_size']}/{cache_stats['cache_limit']}, "
-                  f"Memory: {cache_stats['memory_usage_mb']:.2f}MB")
-        except Exception as e:
-            print(f"Error during idle cleanup: {e}")
-    
-    def _monitor_memory_usage(self):
-        """Monitor memory usage and perform cleanup if needed."""
-        try:
-            # Get cache statistics
-            cache_stats = IconExtractor.get_cache_stats()
-            memory_usage = cache_stats['memory_usage_mb']
-            
-            # Warning at 100MB, aggressive cleanup at 200MB
-            if memory_usage > 200:
-                print(f"Warning: High memory usage: {memory_usage:.1f}MB - Performing aggressive cleanup")
-                self._perform_aggressive_cleanup()
-            elif memory_usage > 100:
-                print(f"Warning: Elevated memory usage: {memory_usage:.1f}MB")
-                self._perform_idle_cleanup()
-        except Exception as e:
-            print(f"Error monitoring memory usage: {e}")
-    
-    def _perform_aggressive_cleanup(self):
-        """Perform aggressive memory cleanup when usage is high."""
-        try:
-            # Clear most of the icon cache
-            IconExtractor.clear_cache()
-            
-            # Force multiple garbage collection cycles
-            for _ in range(3):
-                gc.collect()
-            
-            print("Aggressive memory cleanup completed")
-        except Exception as e:
-            print(f"Error during aggressive cleanup: {e}")
-    
-    def _cleanup_resources(self):
-        """Clean up all timers and resources before closing."""
-        try:
-            # Stop and clean up timers
-            if hasattr(self, '_cleanup_timer'):
-                self._cleanup_timer.stop()
-                self._cleanup_timer.deleteLater()
-            
-            if hasattr(self, '_memory_monitor_timer'):
-                self._memory_monitor_timer.stop()
-                self._memory_monitor_timer.deleteLater()
-            
-            if hasattr(self, '_position_save_timer'):
-                self._position_save_timer.stop()
-                self._position_save_timer.deleteLater()
-            
-            if hasattr(self, '_resize_save_timer'):
-                self._resize_save_timer.stop()
-                self._resize_save_timer.deleteLater()
-            
-            # Clean up animation objects
-            if hasattr(self, '_minimize_animation'):
-                self._minimize_animation.stop()
-                self._minimize_animation.deleteLater()
-            
-            # Clear icon cache
-            IconExtractor.clear_cache()
-            
-            # Force final garbage collection
-            gc.collect()
-            
-            print("Resource cleanup completed")
-        except Exception as e:
-            print(f"Error during resource cleanup: {e}")
 
     def _clear_default_ui(self):
         """Clear the default UI elements from MainWindowBase."""
