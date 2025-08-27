@@ -1258,7 +1258,7 @@ class SamplechromeUI(QWidget):
             profile_names = [p.get('profile', '') for p in deleted_profiles]
             confirmation_message = f"{len(deleted_profiles)} profiles will be removed:\n\n"
             confirmation_message += f"{' , '.join(profile_names)}\n\n"
-            confirmation_message += "This action cannot be undone.\n"
+            confirmation_message += "All data will be deleted\nThis action cannot be undone.\n\n"
             
             # Create custom confirmation dialog
             reply = CustomMessageBox.show_confirmation(self, "Confirm Cleanup", confirmation_message)
@@ -2345,22 +2345,106 @@ class SamplechromeUI(QWidget):
                                      "No Chrome profiles found. Make sure Chrome is installed and has been used at least once.")
             return
         
-        # Check for duplicates (check only profile_id)
-        existing_profile_ids = {profile.get('profile_id', '') for profile in self.profiles}
-        new_profiles = []
+        # Track changes for reporting
+        added_profiles = []
+        updated_profiles = []
+        removed_profiles = []
+        profiles_to_replace = []  # Store profiles that will be replaced for confirmation
         
+        # First pass: analyze what changes will be made
         for chrome_profile in chrome_profiles:
             profile_id = chrome_profile.get('profile_id', '')
-            if profile_id not in existing_profile_ids:
-                new_profiles.append(chrome_profile)
+            chrome_email = chrome_profile.get('email', '')
+            
+            # Find existing profile with same ID
+            existing_profile = None
+            existing_index = -1
+            
+            for i, profile in enumerate(self.profiles):
+                if profile.get('profile_id', '') == profile_id:
+                    existing_profile = profile
+                    existing_index = i
+                    break
+            
+            if existing_profile:
+                # Profile ID exists - check if email is different
+                existing_email = existing_profile.get('email', '')
+                
+                if existing_email != chrome_email:
+                    # Email mismatch - store for confirmation
+                    profiles_to_replace.append({
+                        'existing': existing_profile,
+                        'new': chrome_profile,
+                        'index': existing_index
+                    })
+                # If emails match, skip (no change needed)
+            else:
+                # New profile ID - add it
+                added_profiles.append(chrome_profile)
         
-        if not new_profiles:
-            CustomMessageBox.show_info(self, "No New Profiles", 
-                                     "All profiles already added.")
+        # Show warning and confirmation if profiles will be replaced
+        if profiles_to_replace:
+            # Prepare warning message
+            if len(profiles_to_replace) == 1:
+                profile = profiles_to_replace[0]
+                warning_message = f"Profile '{profile['existing']['profile']}' will be replaced:\n\n\n"
+                warning_message += f"Current email: {profile['existing']['email'] or 'None'}\n"
+                warning_message += f"New email: {profile['new']['email'] or 'None'}\n\n\n"
+                warning_message += "All data will be deleted\nThis action cannot be undone. Continue?\n"
+            else:
+                warning_message = f"{len(profiles_to_replace)} profiles will be replaced due to email mismatches:\n\n\n"
+                for profile in profiles_to_replace:
+                    warning_message += f"• {profile['existing']['profile']}: {profile['existing']['email'] or 'None'} → {profile['new']['email'] or 'None'}\n"
+                warning_message += "All data will be deleted\nThis action cannot be undone. Continue?\n"
+            
+            # Show confirmation dialog
+            if not CustomMessageBox.show_confirmation(self, "Confirm Profile Replacement", warning_message):
+                # User cancelled - show info message
+                if added_profiles:
+                    CustomMessageBox.show_info(self, "Partial Update", 
+                                            f"Only {len(added_profiles)} new profile(s) were added.\n"
+                                            "Profile replacements were cancelled.")
+                else:
+                    CustomMessageBox.show_info(self, "Update Cancelled", 
+                                            "Profile collection was cancelled.")
+                return
+        
+        # Second pass: apply the changes
+        for chrome_profile in chrome_profiles:
+            profile_id = chrome_profile.get('profile_id', '')
+            chrome_email = chrome_profile.get('email', '')
+            
+            # Find existing profile with same ID
+            existing_profile = None
+            existing_index = -1
+            
+            for i, profile in enumerate(self.profiles):
+                if profile.get('profile_id', '') == profile_id:
+                    existing_profile = profile
+                    existing_index = i
+                    break
+            
+            if existing_profile:
+                # Profile ID exists - check if email is different
+                existing_email = existing_profile.get('email', '')
+                
+                if existing_email != chrome_email:
+                    # Email mismatch - remove current profile and add new data
+                    removed_profiles.append(existing_profile)
+                    self.profiles.pop(existing_index)
+                    
+                    # Add the new profile data
+                    self.profiles.append(chrome_profile)
+                    updated_profiles.append(chrome_profile)
+                # If emails match, skip (no change needed)
+            else:
+                # New profile ID - add it (already added to added_profiles in first pass)
+                self.profiles.append(chrome_profile)
+        
+        if not added_profiles and not updated_profiles:
+            CustomMessageBox.show_info(self, "No Changes", 
+                                     "All profiles are up to date.")
             return
-        
-        # Add new profiles to existing list
-        self.profiles.extend(new_profiles)
         
         # Sort profiles alphabetically by profile name before saving
         self.profiles.sort(key=lambda profile: profile.get('profile', '').lower())
@@ -2368,14 +2452,32 @@ class SamplechromeUI(QWidget):
         # Save to file
         if self.save_profiles(self.profiles):
             self.populate_profiles_table(skip_validation=True)
-            # Show different messages based on number of profiles
-            if len(new_profiles) > 5:
-                CustomMessageBox.show_success(self, "Success", 
-                                            f"Added {len(new_profiles)} Chrome profile(s) to the list.")
-            else:
-                profile_names = [profile['profile'] for profile in new_profiles]
-                CustomMessageBox.show_success(self, "Success", 
-                                            f"Added profiles: {', '.join(profile_names)}")
+            
+            # Prepare success message
+            message_parts = []
+            if added_profiles:
+                if len(added_profiles) > 5:
+                    message_parts.append(f"Added {len(added_profiles)} new profile(s)")
+                else:
+                    profile_names = [profile['profile'] for profile in added_profiles]
+                    message_parts.append(f"Added: {', '.join(profile_names)}")
+            
+            if updated_profiles:
+                if len(updated_profiles) > 5:
+                    message_parts.append(f"Updated {len(updated_profiles)} profile(s)")
+                else:
+                    profile_names = [profile['profile'] for profile in updated_profiles]
+                    message_parts.append(f"Updated: {', '.join(profile_names)}")
+            
+            if removed_profiles:
+                if len(removed_profiles) > 5:
+                    message_parts.append(f"Replaced {len(removed_profiles)} profile(s)")
+                else:
+                    profile_names = [profile['profile'] for profile in removed_profiles]
+                    message_parts.append(f"Replaced: {', '.join(profile_names)}")
+            
+            success_message = ". ".join(message_parts)
+            CustomMessageBox.show_success(self, "Success", success_message)
         else:
             CustomMessageBox.show_error(self, "Error", 
                                       "Failed to save profiles to file.")
