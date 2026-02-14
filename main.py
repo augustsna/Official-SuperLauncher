@@ -1511,6 +1511,85 @@ class LauncherWindow(MainWindowBase):
             }
         """)
     
+    def _load_window_position(self):
+        """Load and apply saved window position from config."""
+        try:
+            position = self.config.load_window_position()
+            width = position.get('width', 620)
+            height = position.get('height', 620)
+            
+            # Resize the window first
+            self.resize(width, height)
+            
+            # Then position it
+            x = position.get('x')
+            y = position.get('y')
+            
+            if x is not None and y is not None:
+                # Move to saved position
+                self.move(x, y)
+            else:
+                # Center on screen if no saved position
+                from PySide6.QtWidgets import QApplication
+                screen = QApplication.primaryScreen().geometry()
+                self.move(
+                    (screen.width() - width) // 2,
+                    (screen.height() - height) // 2
+                )
+        except Exception as e:
+            print(f"Error loading window position: {e}")
+            # Fall back to default size and center
+            self.resize(620, 620)
+    
+    def _connect_window_events(self):
+        """Connect window events for position saving."""
+        # Initialize timers for debouncing save operations
+        self._position_save_timer = None
+        self._resize_save_timer = None
+    
+    def _save_current_position(self):
+        """Save the current window position and size to config."""
+        try:
+            # Don't save if window is minimized or maximized
+            if self.isMinimized() or self.isMaximized():
+                return
+                
+            pos = self.pos()
+            size = self.size()
+            self.config.save_window_position(pos.x(), pos.y(), size.width(), size.height())
+        except Exception as e:
+            print(f"Error saving window position: {e}")
+    
+    def moveEvent(self, event):
+        """Handle window move events to save position."""
+        super().moveEvent(event)
+        # Debounce the save operation
+        if hasattr(self, '_position_save_timer'):
+            if self._position_save_timer:
+                self._position_save_timer.stop()
+                self._position_save_timer.deleteLater()
+            
+            from PySide6.QtCore import QTimer
+            self._position_save_timer = QTimer()
+            self._position_save_timer.setSingleShot(True)
+            self._position_save_timer.timeout.connect(self._save_current_position)
+            self._position_save_timer.start(500)  # Save 500ms after moving stops
+    
+    def resizeEvent(self, event):
+        """Handle window resize events to save size."""
+        super().resizeEvent(event)
+        # Debounce the save operation
+        if hasattr(self, '_resize_save_timer'):
+            if self._resize_save_timer:
+                self._resize_save_timer.stop()
+                self._resize_save_timer.deleteLater()
+            
+            from PySide6.QtCore import QTimer
+            self._resize_save_timer = QTimer()
+            self._resize_save_timer.setSingleShot(True)
+            self._resize_save_timer.timeout.connect(self._save_current_position)
+            self._resize_save_timer.start(500)  # Save 500ms after resizing stops
+    
     def _apply_icon_quality_settings(self):
         """Apply the current icon quality settings to the IconExtractor."""
         IconExtractor.set_icon_quality_settings(self.icon_quality_settings)
