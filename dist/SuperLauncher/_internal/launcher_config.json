@@ -28,6 +28,7 @@
     "cache_size_limit": 100,
     "widget_size": 90,
     "grid_columns": 3,
-    "header_height": 0
+    "header_height": 0,
+    "show_names": true
   }
 }
