@@ -358,13 +358,16 @@ def main():
     
     # Build launcher
     if build_launcher():
-        # Copy icons to build folder
+        # Copy icons to build folder preserving structure
         source_icons = os.path.join(os.getcwd(), 'template_app', 'assets', 'icons')
-        dest_icons = os.path.join(os.getcwd(), 'dist', 'SuperLauncher', 'icons')
+        dest_icons = os.path.join(os.getcwd(), 'dist', 'SuperLauncher', 'template_app', 'assets', 'icons')
         
-        print(f"📂 Copying icons to build folder...")
+        print(f"📂 Copying icons to build folder (preserving structure)...")
         try:
             if os.path.exists(source_icons):
+                # Ensure destination directory exists
+                os.makedirs(os.path.dirname(dest_icons), exist_ok=True)
+                # Copy the directory
                 if os.path.exists(dest_icons):
                     shutil.rmtree(dest_icons)
                 shutil.copytree(source_icons, dest_icons)
@@ -381,7 +384,7 @@ def main():
         print("\n📁 Generated files:")
         print("   • dist/SuperLauncher/ - SuperLauncher build")
         print("   • dist/SuperLauncher/SuperLauncher.exe - Main executable")
-        print("   • dist/SuperLauncher/icons/ - Application icons")
+        print("   • dist/SuperLauncher/template_app/assets/icons/ - Application icons")
         print("\n🎉 SuperLauncher build completed successfully!")
         print("\n💡 You can now run the executable from:")
         print("   dist/SuperLauncher/SuperLauncher.exe")
