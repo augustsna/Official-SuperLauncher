@@ -671,7 +671,8 @@ class ConfigStore:
             'cache_size_limit': 100,
             'widget_size': 100,  # Default widget size (100x100)
             'grid_columns': 5,  # Default number of columns
-            'header_height': 80  # Default header height
+            'header_height': 80,  # Default header height
+            'show_names': True  # Default to showing program names
         }
         
         # If no icon quality settings exist, save the defaults
@@ -997,7 +998,17 @@ class AppGrid(QWidget):
         
         # Add widgets to layout
         layout.addWidget(icon_label)
-        layout.addWidget(text_label)
+        
+        # Only add text label if show_names is enabled
+        show_names = self.icon_quality_settings.get('show_names', True)
+        if show_names:
+            layout.addWidget(text_label)
+        else:
+            # When names are hidden, icon should be more centered
+            layout.setContentsMargins(5, 5, 5, 5)
+            layout.setSpacing(0)
+            # Add tooltip so user can still see the name on hover
+            widget.setToolTip(app.display_name())
         
         # Store widget reference for event handlers to avoid circular references
         widget._grid_parent = self
@@ -1608,7 +1619,7 @@ class LauncherWindow(MainWindowBase):
         return preferred_sizes[0] if preferred_sizes else 48
     
         
-    def _reset_icon_settings(self, icon_size_combo, widget_size_combo, grid_columns_combo, header_height_combo, high_quality_cb, dpi_aware_cb, cache_cb, cache_spin, scaling_combo):
+    def _reset_icon_settings(self, icon_size_combo, widget_size_combo, grid_columns_combo, header_height_combo, high_quality_cb, dpi_aware_cb, show_names_cb, cache_cb, cache_spin, scaling_combo):
         """Reset icon quality settings to default values."""
         # Reset to default values
         icon_size_combo.setCurrentText("48x48")
@@ -1617,6 +1628,7 @@ class LauncherWindow(MainWindowBase):
         header_height_combo.setCurrentText("80")
         high_quality_cb.setChecked(True)
         dpi_aware_cb.setChecked(True)
+        show_names_cb.setChecked(True)
         cache_cb.setChecked(True)
         cache_spin.setValue(100)
         scaling_combo.setCurrentText("smooth")
@@ -1630,7 +1642,8 @@ class LauncherWindow(MainWindowBase):
             'cache_enabled': True,
             'cache_size_limit': 100,
             'widget_size': 100,  # Default widget size (100x100)
-            'grid_columns': 5  # Default number of columns
+            'grid_columns': 5,  # Default number of columns
+            'show_names': True  # Default to showing program names
         }
         self.icon_quality_settings.update(default_settings)
         
@@ -1745,8 +1758,10 @@ class LauncherWindow(MainWindowBase):
         dpi_aware_cb.setChecked(self.icon_quality_settings['use_dpi_aware_scaling'])
         layout.addWidget(dpi_aware_cb)
         
-        # Add spacing after scaling options
-        layout.addSpacing(8)
+        # Show names checkbox
+        show_names_cb = QCheckBox("Show program item names")
+        show_names_cb.setChecked(self.icon_quality_settings.get('show_names', True))
+        layout.addWidget(show_names_cb)
         
         # Cache enabled checkbox
         cache_cb = QCheckBox("Enable icon caching")
@@ -1782,7 +1797,7 @@ class LauncherWindow(MainWindowBase):
         # Buttons
         button_layout = QHBoxLayout()
         reset_btn = QPushButton("Reset to Default")
-        reset_btn.clicked.connect(lambda: self._reset_icon_settings(icon_size_combo, widget_size_combo, grid_columns_combo, header_height_combo, high_quality_cb, dpi_aware_cb, cache_cb, cache_spin, scaling_combo))
+        reset_btn.clicked.connect(lambda: self._reset_icon_settings(icon_size_combo, widget_size_combo, grid_columns_combo, header_height_combo, high_quality_cb, dpi_aware_cb, show_names_cb, cache_cb, cache_spin, scaling_combo))
         
         apply_btn = QPushButton("Apply")
         cancel_btn = QPushButton("Cancel")
@@ -1796,7 +1811,7 @@ class LauncherWindow(MainWindowBase):
         # Connect buttons
         apply_btn.clicked.connect(lambda: self._apply_icon_settings_dialog(
             dialog, icon_size_combo.currentText(), widget_size_combo.currentText(), grid_columns_combo.currentText(), header_height_combo.currentText(), high_quality_cb.isChecked(), dpi_aware_cb.isChecked(),
-            cache_cb.isChecked(), cache_spin.value(), scaling_combo.currentText()
+            show_names_cb.isChecked(), cache_cb.isChecked(), cache_spin.value(), scaling_combo.currentText()
         ))
         cancel_btn.clicked.connect(dialog.reject)
         
@@ -2687,7 +2702,7 @@ TRAY ICON:
             print(f"Error finding main app: {e}")
             return None
 
-    def _apply_icon_settings_dialog(self, dialog, icon_size, widget_size, grid_columns, header_height, high_quality, dpi_aware, cache_enabled, cache_size, scaling_method):
+    def _apply_icon_settings_dialog(self, dialog, icon_size, widget_size, grid_columns, header_height, high_quality, dpi_aware, show_names, cache_enabled, cache_size, scaling_method):
         """Apply the icon quality settings from the dialog."""
         # Parse icon size from "48x48" format to integer
         try:
@@ -2724,6 +2739,7 @@ TRAY ICON:
         self.icon_quality_settings.update({
             'use_high_quality_scaling': high_quality,
             'use_dpi_aware_scaling': dpi_aware,
+            'show_names': show_names,
             'cache_enabled': cache_enabled,
             'cache_size_limit': cache_size,
             'fallback_scaling_method': scaling_method,
