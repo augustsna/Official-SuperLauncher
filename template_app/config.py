@@ -16,13 +16,14 @@ def project_root() -> str:
 
     - When running under PyInstaller, prefer the executable directory
       (one-folder) or the temporary extraction dir (one-file via _MEIPASS).
-    - When running from source, keep using the current working directory
-      so existing relative paths like 'template_app/assets/...' continue to work.
+    - When running from source, use the project directory (the parent of the
+      template_app package) so assets resolve no matter which directory the
+      app was launched from (shortcuts, Startup folder, etc.).
     """
     import sys
     if getattr(sys, 'frozen', False):
         return getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
-    return os.path.abspath(os.getcwd())
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def load_json(path: str, default: Optional[Union[dict, list]] = None):

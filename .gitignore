@@ -1,0 +1,14 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# PyInstaller intermediate build output
+build/
+
+# Virtual environments
+.venv/
+venv/
+
+# Logs and temp files
+*.log
+*.tmp

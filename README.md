@@ -7,9 +7,11 @@ A powerful, modern application launcher built with PySide6 featuring advanced ic
 - **Advanced Icon Scaling**: Multi-size icon extraction with high-quality scaling algorithms
 - **DPI-Aware Rendering**: Crisp icons on all screen resolutions including high-DPI displays
 - **Smart Caching**: Intelligent icon caching for improved performance
-- **Drag & Drop**: Reorganize apps with intuitive drag-and-drop interface
+- **Drag & Drop**: Reorganize apps by dragging them, or pin new ones by dragging files/folders in from Explorer
 - **Grid Layout**: Clean, organized grid-based app display similar to Windows Start Menu
-- **Search & Filter**: Quick app search and filtering capabilities
+- **Search & Filter**: Type to filter (`Ctrl+F`), press `Enter` to launch the first match, `Esc` to clear
+- **Fast Launching**: Apps start directly through the Windows shell, using their own folder as the working directory
+- **Safe Config**: Settings are written atomically to `%APPDATA%\SuperLauncher\config.json`; an unreadable config is kept as `config.corrupt.json` instead of being overwritten
 - **Context Menus**: Rich context menus with app management options
 - **Icon Diagnostics**: Built-in tools to troubleshoot icon issues
 - **Quality Settings**: Configurable icon quality and performance options

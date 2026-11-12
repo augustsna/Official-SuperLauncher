@@ -38,6 +38,23 @@ except ImportError:
 
 
 APP_NAME = "SuperLauncher"
+INTERNAL_DRAG_MIME = "application/x-superlauncher-item-index"
+APP_ICON_PATH = os.path.join(project_root(), "template_app", "assets", "icons", "icon2.png")
+
+
+def _write_json_atomic(path: Path, data: dict) -> None:
+    """Write JSON to a temp file and atomically swap it in.
+
+    A crash or power loss mid-write can then never leave a truncated config
+    behind (which would otherwise be read back as an empty app list and then
+    saved over the user's pinned apps).
+    """
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
 
 
 class IconExtractor:
@@ -626,13 +643,26 @@ class ConfigStore:
     def _read(self) -> dict:
         try:
             with self.path.open("r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {"apps": []}
+        except FileNotFoundError:
+            return {"apps": []}
+        except Exception as e:
+            # Corrupt config: keep a copy so the user's pinned apps aren't
+            # silently lost when the next save overwrites the file.
+            backup = self.path.with_suffix(".corrupt.json")
+            try:
+                os.replace(self.path, backup)
+                print(f"Config was unreadable ({e}); moved to {backup}")
+            except OSError:
+                pass
             return {"apps": []}
 
     def _write(self, data: dict) -> None:
-        with self.path.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+        try:
+            _write_json_atomic(self.path, data)
+        except OSError as e:
+            print(f"Error writing config {self.path}: {e}")
 
     def load_apps(self) -> List[AppItem]:
         data = self._read()
@@ -699,8 +729,7 @@ class ConfigStore:
                 launcher_data['icon_quality_settings'] = settings
                 
                 # Write back to launcher_config.json
-                with self.launcher_config_path.open("w", encoding="utf-8") as f:
-                    json.dump(launcher_data, f, indent=2)
+                _write_json_atomic(self.launcher_config_path, launcher_data)
             except Exception:
                 pass
     
@@ -737,6 +766,7 @@ class AppGrid(QWidget):
         self.app_widgets: List[QWidget] = []
         self.columns = 5  # Default number of columns
         self.icon_quality_settings = {}  # Store icon quality settings
+        self._filter_text = ""
         
         # Create scroll area for the grid
         self.scroll_area = QScrollArea()
@@ -902,13 +932,34 @@ class AppGrid(QWidget):
 
     def _build_grid(self) -> None:
         """Build the grid layout with app widgets."""
-        for i, app in enumerate(self.apps):
-            row = i // self.columns
-            col = i % self.columns
-            
+        for app in self.apps:
             app_widget = self._create_app_widget(app)
-            self.grid_layout.addWidget(app_widget, row, col)
+            # Parent explicitly so hidden (filtered-out) widgets never become top-level windows
+            app_widget.setParent(self.content_widget)
             self.app_widgets.append(app_widget)
+        self._layout_widgets()
+
+    def _matches_filter(self, app: AppItem) -> bool:
+        text = self._filter_text
+        if not text:
+            return True
+        return text in app.display_name().lower() or text in Path(app.path).name.lower()
+
+    def _layout_widgets(self) -> None:
+        """Place only the widgets matching the current filter, packed from the top-left."""
+        # Detach items from the layout without deleting the widgets
+        while self.grid_layout.count():
+            self.grid_layout.takeAt(0)
+
+        columns = max(1, int(self.columns or 1))
+        position = 0
+        for widget in self.app_widgets:
+            if self._matches_filter(widget.app_data):
+                self.grid_layout.addWidget(widget, position // columns, position % columns)
+                widget.show()
+                position += 1
+            else:
+                widget.hide()
 
     def _create_app_widget(self, app: AppItem) -> QWidget:
         """Create a widget for a single app item."""
@@ -1060,20 +1111,6 @@ class AppGrid(QWidget):
         """Wrapper for drop event."""
         return self._on_app_drop(event, widget)
 
-    def _on_app_clicked(self, event, widget):
-        """Handle single click on app widget."""
-        if event.button() == Qt.LeftButton:
-            self._last_clicked_app = widget.app_data
-            # Highlight the clicked widget
-            self._clear_highlights()
-            widget._is_clicked = True
-            widget.setStyleSheet("""
-                QWidget {
-                    background-color: rgba(45, 55, 72, 0.1);
-                    border-radius: 8px;
-                }
-            """)
-
     def _on_app_double_clicked(self, event, widget):
         """Handle double click on app widget."""
         if event.button() == Qt.LeftButton:
@@ -1141,7 +1178,7 @@ class AppGrid(QWidget):
         """Start drag operation for the widget."""
         drag = QDrag(widget)
         mime_data = QMimeData()
-        mime_data.setText(str(self.app_widgets.index(widget)))
+        mime_data.setData(INTERNAL_DRAG_MIME, str(self.app_widgets.index(widget)).encode())
         drag.setMimeData(mime_data)
         
         # Create drag pixmap
@@ -1160,7 +1197,15 @@ class AppGrid(QWidget):
 
     def _on_app_drag_enter(self, event, widget):
         """Handle drag enter event."""
-        if event.mimeData().hasText():
+        if not event.mimeData().hasFormat(INTERNAL_DRAG_MIME):
+            # Files dragged in from Explorer: let the main window handle pinning
+            main_window = self._find_main_window()
+            if main_window:
+                main_window.dragEnterEvent(event)
+            else:
+                event.ignore()
+            return
+        if event.mimeData().hasFormat(INTERNAL_DRAG_MIME):
             event.acceptProposedAction()
             # Highlight drop target
             widget.setStyleSheet("""
@@ -1195,9 +1240,16 @@ class AppGrid(QWidget):
 
     def _on_app_drop(self, event, widget):
         """Handle drop event to rearrange items."""
-        if event.mimeData().hasText():
+        if not event.mimeData().hasFormat(INTERNAL_DRAG_MIME):
+            main_window = self._find_main_window()
+            if main_window:
+                main_window.dropEvent(event)
+            else:
+                event.ignore()
+            return
+        if event.mimeData().hasFormat(INTERNAL_DRAG_MIME):
             try:
-                source_index = int(event.mimeData().text())
+                source_index = int(bytes(event.mimeData().data(INTERNAL_DRAG_MIME)).decode())
                 target_index = self.app_widgets.index(widget)
                 
                 if source_index != target_index:
@@ -1363,17 +1415,6 @@ class AppGrid(QWidget):
         if main_window and hasattr(main_window, 'run_path'):
             main_window.run_path(app.path)
     
-    def _show_item_missing_error(self, app: AppItem):
-        """Show error when trying to run a missing item."""
-        from PySide6.QtWidgets import QMessageBox
-        
-        QMessageBox.warning(
-            self,
-            "Item Not Found",
-            f"The item '{app.display_name()}' no longer exists at:\n{app.path}\n\nPlease Unpin it from the launcher or update the path.",
-            QMessageBox.Ok
-        )
-
     def _run_app_admin(self, app: AppItem):
         """Run an application as administrator."""
         main_window = self._find_main_window()
@@ -1409,12 +1450,16 @@ class AppGrid(QWidget):
         return None
 
     def filter(self, text: str) -> None:
-        """Filter the grid based on search text."""
-        text_lower = text.lower()
+        """Filter the grid based on search text, re-flowing matches so there are no gaps."""
+        self._filter_text = text.strip().lower()
+        self._layout_widgets()
+
+    def first_visible_app(self) -> Optional[AppItem]:
+        """Return the first app that matches the current filter."""
         for widget in self.app_widgets:
-            app = widget.app_data
-            visible = text_lower in app.display_name().lower()
-            widget.setVisible(visible)
+            if self._matches_filter(widget.app_data):
+                return widget.app_data
+        return None
 
     def current_app(self) -> Optional[AppItem]:
         """Get the currently selected app."""
@@ -1444,6 +1489,9 @@ class LauncherWindow(MainWindowBase):
         
         # Initialize force quit flag
         self._force_quit = False
+
+        # Allow pinning by dragging files/folders from Explorer onto the window
+        self.setAcceptDrops(True)
         
         # Override window title and size for launcher
         self.setWindowTitle(APP_NAME)
@@ -1457,12 +1505,12 @@ class LauncherWindow(MainWindowBase):
         self.setWindowFlags(Qt.Window | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
         
         # Set window icon for taskbar (different from UI icons) - after setting window flags
-        window_icon = QIcon("template_app/assets/icons/icon2.png")
+        window_icon = QIcon(APP_ICON_PATH)
         if not window_icon.isNull():
             self.setWindowIcon(window_icon)
             print(f"Window icon set successfully: {window_icon.availableSizes()}")
         else:
-            print("Failed to load window icon from template_app/assets/icons/icon2.png")
+            print(f"Failed to load window icon from {APP_ICON_PATH}")
         
         # Enable high-quality rendering attributes but keep system background for proper taskbar behavior
         self.setAttribute(Qt.WA_TranslucentBackground, False)  # Changed to False
@@ -1521,85 +1569,6 @@ class LauncherWindow(MainWindowBase):
                 border: none;
             }
         """)
-    
-    def _load_window_position(self):
-        """Load and apply saved window position from config."""
-        try:
-            position = self.config.load_window_position()
-            width = position.get('width', 620)
-            height = position.get('height', 620)
-            
-            # Resize the window first
-            self.resize(width, height)
-            
-            # Then position it
-            x = position.get('x')
-            y = position.get('y')
-            
-            if x is not None and y is not None:
-                # Move to saved position
-                self.move(x, y)
-            else:
-                # Center on screen if no saved position
-                from PySide6.QtWidgets import QApplication
-                screen = QApplication.primaryScreen().geometry()
-                self.move(
-                    (screen.width() - width) // 2,
-                    (screen.height() - height) // 2
-                )
-        except Exception as e:
-            print(f"Error loading window position: {e}")
-            # Fall back to default size and center
-            self.resize(620, 620)
-    
-    def _connect_window_events(self):
-        """Connect window events for position saving."""
-        # Initialize timers for debouncing save operations
-        self._position_save_timer = None
-        self._resize_save_timer = None
-    
-    def _save_current_position(self):
-        """Save the current window position and size to config."""
-        try:
-            # Don't save if window is minimized or maximized
-            if self.isMinimized() or self.isMaximized():
-                return
-                
-            pos = self.pos()
-            size = self.size()
-            self.config.save_window_position(pos.x(), pos.y(), size.width(), size.height())
-        except Exception as e:
-            print(f"Error saving window position: {e}")
-    
-    def moveEvent(self, event):
-        """Handle window move events to save position."""
-        super().moveEvent(event)
-        # Debounce the save operation
-        if hasattr(self, '_position_save_timer'):
-            if self._position_save_timer:
-                self._position_save_timer.stop()
-                self._position_save_timer.deleteLater()
-            
-            from PySide6.QtCore import QTimer
-            self._position_save_timer = QTimer()
-            self._position_save_timer.setSingleShot(True)
-            self._position_save_timer.timeout.connect(self._save_current_position)
-            self._position_save_timer.start(500)  # Save 500ms after moving stops
-    
-    def resizeEvent(self, event):
-        """Handle window resize events to save size."""
-        super().resizeEvent(event)
-        # Debounce the save operation
-        if hasattr(self, '_resize_save_timer'):
-            if self._resize_save_timer:
-                self._resize_save_timer.stop()
-                self._resize_save_timer.deleteLater()
-            
-            from PySide6.QtCore import QTimer
-            self._resize_save_timer = QTimer()
-            self._resize_save_timer.setSingleShot(True)
-            self._resize_save_timer.timeout.connect(self._save_current_position)
-            self._resize_save_timer.start(500)  # Save 500ms after resizing stops
     
     def _apply_icon_quality_settings(self):
         """Apply the current icon quality settings to the IconExtractor."""
@@ -2482,103 +2451,82 @@ TRAY ICON:
 
     
     def _load_window_position(self):
-        """Load and apply saved window position."""
+        """Load and apply saved window position, keeping the window on a visible screen."""
         try:
             position_data = self.config.load_window_position()
             x = position_data.get('x')
             y = position_data.get('y')
-            width = position_data.get('width', 620)
-            height = position_data.get('height', 620)
-            
+            width = int(position_data.get('width') or 620)
+            height = int(position_data.get('height') or 620)
+
             # Set window size first (this sets the client area size)
             self.resize(width, height)
-            
-            # Set window position if coordinates are saved
-            if x is not None and y is not None:
-                # Ensure window is within screen bounds
-                screen = QApplication.primaryScreen()
-                if screen:
-                    screen_geometry = screen.geometry()
-                    
-                    # Adjust position if window would be off-screen
-                    if x < screen_geometry.left():
-                        x = screen_geometry.left() + 50
-                    if y < screen_geometry.top():
-                        y = screen_geometry.top() + 50
-                    if x + width > screen_geometry.right():
-                        x = screen_geometry.right() - width - 50
-                    if y + height > screen_geometry.bottom():
-                        y = screen_geometry.bottom() - height - 50
-                    
-                    # Move the window to the saved position
-                    self.move(x, y)
-                else:
-                    self._center_window_on_screen()
-            else:
-                # Center window on screen if no position saved
+
+            if x is None or y is None:
                 self._center_window_on_screen()
-                
+                return
+
+            # Find the screen the saved position belongs to (supports multiple monitors).
+            # If that monitor is gone, fall back to the primary screen.
+            from PySide6.QtCore import QPoint
+            screen = QApplication.screenAt(QPoint(int(x) + 40, int(y) + 20)) or QApplication.primaryScreen()
+            if not screen:
+                self.move(int(x), int(y))
+                return
+
+            area = screen.availableGeometry()
+            # Clamp so the whole window (or as much as fits) is on that screen
+            x = max(area.left(), min(int(x), area.right() - width))
+            y = max(area.top(), min(int(y), area.bottom() - height))
+            self.move(x, y)
+
         except Exception as e:
             print(f"Error loading window position: {e}")
             # Fallback to centering on screen
             self._center_window_on_screen()
-    
+
     def _center_window_on_screen(self):
         """Center the window on the primary screen."""
         try:
             screen = QApplication.primaryScreen()
             if screen:
-                screen_geometry = screen.geometry()
+                screen_geometry = screen.availableGeometry()
                 window_geometry = self.geometry()
                 x = screen_geometry.center().x() - window_geometry.width() // 2
                 y = screen_geometry.center().y() - window_geometry.height() // 2
                 self.move(x, y)
         except Exception as e:
             print(f"Error centering window: {e}")
-    
+
+    def _schedule_position_save(self, delay_ms: int) -> None:
+        """Debounce position/size saves so dragging doesn't hammer the config file."""
+        timer = getattr(self, '_position_save_timer', None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._save_current_position)
+            self._position_save_timer = timer
+        timer.start(delay_ms)
+
     def _on_move(self, event):
         """Handle window move event to save position."""
-        try:
-            # Save position after a short delay to avoid excessive saves during dragging
-            if hasattr(self, '_position_save_timer'):
-                self._position_save_timer.stop()
-            else:
-                from PySide6.QtCore import QTimer
-                self._position_save_timer = QTimer()
-                self._position_save_timer.setSingleShot(True)
-                self._position_save_timer.timeout.connect(self._save_current_position)
-            
-            self._position_save_timer.start(500)  # Save after 500ms of no movement
-            
-        except Exception as e:
-            print(f"Error handling move event: {e}")
-        
+        self._schedule_position_save(500)
         super().moveEvent(event)
-    
+
     def _on_resize(self, event):
         """Handle window resize event to save position and size."""
-        try:
-            # Save position and size after a short delay to avoid excessive saves during resizing
-            if hasattr(self, '_resize_save_timer'):
-                self._resize_save_timer.stop()
-            else:
-                from PySide6.QtCore import QTimer
-                self._resize_save_timer = QTimer()
-                self._resize_save_timer.setSingleShot(True)
-                self._resize_save_timer.timeout.connect(self._save_current_position)
-            
-            self._resize_save_timer.start(300)  # Save after 300ms of no resizing
-            
-        except Exception as e:
-            print(f"Error handling resize event: {e}")
-        
+        self._schedule_position_save(300)
         super().resizeEvent(event)
-    
+
     def _save_current_position(self):
         """Save the current window position and size."""
         try:
-            # Use frameGeometry() for correct screen-relative position
-            # Use geometry() for correct client area size (without decorations)
+            # A minimized window on Windows sits at (-32000, -32000); saving that
+            # (or a maximized/hidden geometry) would lose the real position.
+            if not self.isVisible() or self.isMinimized() or self.isMaximized():
+                return
+            # frameGeometry() for the screen-relative position (what move() expects),
+            # geometry() for the client area size (what resize() expects)
             frame_geometry = self.frameGeometry()
             client_geometry = self.geometry()
             self.config.save_window_position(
@@ -2589,23 +2537,7 @@ TRAY ICON:
             )
         except Exception as e:
             print(f"Error saving window position: {e}")
-    
-    def _on_close(self, event):
-        """Handle window close event to save final position and exit program."""
-        try:
-            # Save current position before exiting
-            self._save_current_position()
-        except Exception as e:
-            print(f"Error saving window position on close: {e}")
-        
-        # Hide tray icon if it exists
-        app_instance = self._find_main_app()
-        if app_instance and hasattr(app_instance, 'tray') and app_instance.tray:
-            app_instance.tray.hide()
-        
-        # Exit the application
-        QApplication.quit()
-    
+
     def _on_close_alt(self, event):
         """Handle window close event to minimize program instead of closing."""
         # Instead of closing, minimize the program
@@ -2632,11 +2564,6 @@ TRAY ICON:
                 self._position_save_timer.stop()
                 self._position_save_timer.deleteLater()
                 self._position_save_timer = None
-            
-            if hasattr(self, '_resize_save_timer') and self._resize_save_timer:
-                self._resize_save_timer.stop()
-                self._resize_save_timer.deleteLater()
-                self._resize_save_timer = None
             
             # Stop and clean up animations
             if hasattr(self, '_minimize_animation') and self._minimize_animation:
@@ -2785,8 +2712,11 @@ TRAY ICON:
         self.filter_edit = QLineEdit()
         self.filter_edit.setFixedHeight(30)
         self.filter_edit.setFixedWidth(250)
-        self.filter_edit.setPlaceholderText("Search...")
+        self.filter_edit.setPlaceholderText("Search...  (Enter to launch)")
+        self.filter_edit.setClearButtonEnabled(True)
         self.filter_edit.textChanged.connect(self.on_filter)
+        self.filter_edit.returnPressed.connect(self._on_search_return)
+        self.filter_edit.installEventFilter(self)
         self.filter_edit.setStyleSheet("""
             QLineEdit {
                 background-color: #2d2d2d;
@@ -3143,15 +3073,8 @@ TRAY ICON:
             "All Files (*.*)"
         )
         
-        if not paths:
-            return
-            
-        for path in paths:
-            if path not in [app.path for app in self.apps]:
-                self.apps.append(AppItem(path=path))
-        
-        self.config.save_apps(self.apps)
-        self.app_grid.populate(self.apps)
+        if paths:
+            self.add_paths(paths)
 
     def on_add_folder(self) -> None:
         """Add a folder to the launcher."""
@@ -3166,23 +3089,77 @@ TRAY ICON:
             desktop_dir
         )
         
-        if not folder_path:
-            return
-            
-        # Debug logging
-        print(f"Selected folder: {folder_path}")
-        print(f"Folder exists: {os.path.exists(folder_path)}")
-        print(f"Is directory: {os.path.isdir(folder_path)}")
-        print(f"Absolute path: {os.path.abspath(folder_path)}")
-            
-        # Check if folder is already added
-        if folder_path not in [app.path for app in self.apps]:
-            self.apps.append(AppItem(path=folder_path))
+        if folder_path:
+            self.add_paths([folder_path])
+
+    @staticmethod
+    def _path_key(path: str) -> str:
+        """Normalize a path for duplicate detection (case, slashes, '..')."""
+        return os.path.normcase(os.path.normpath(os.path.abspath(path)))
+
+    def add_paths(self, paths: List[str]) -> int:
+        """Pin files/folders that aren't pinned yet. Returns how many were added."""
+        existing = {self._path_key(app.path) for app in self.apps}
+        added = 0
+        for path in paths:
+            if not path or not os.path.exists(path):
+                continue
+            key = self._path_key(path)
+            if key in existing:
+                continue
+            existing.add(key)
+            self.apps.append(AppItem(path=os.path.normpath(path)))
+            added += 1
+        if added:
             self.config.save_apps(self.apps)
             self.app_grid.populate(self.apps)
-            print(f"Folder added successfully: {folder_path}")
+        return added
+
+    # --- Drag files/folders from Explorer onto the window to pin them ---
+    @staticmethod
+    def _local_paths_from_mime(mime) -> List[str]:
+        if mime.hasFormat(INTERNAL_DRAG_MIME) or not mime.hasUrls():
+            return []
+        return [url.toLocalFile() for url in mime.urls() if url.isLocalFile()]
+
+    def dragEnterEvent(self, event):
+        if self._local_paths_from_mime(event.mimeData()):
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
         else:
-            print(f"Folder already exists in launcher: {folder_path}")
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        self.dragEnterEvent(event)
+
+    def dropEvent(self, event):
+        paths = self._local_paths_from_mime(event.mimeData())
+        if paths:
+            self.add_paths(paths)
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+        else:
+            event.ignore()
+
+    def _on_search_return(self) -> None:
+        """Enter in the search box launches the first matching item."""
+        app = self.app_grid.first_visible_app()
+        if app:
+            self.run_path(app.path)
+
+    def eventFilter(self, obj, event):
+        # Esc in the search box clears it
+        from PySide6.QtCore import QEvent
+        is_search_escape = (
+            obj is getattr(self, 'filter_edit', None)
+            and event.type() == QEvent.KeyPress
+            and event.key() == Qt.Key_Escape
+            and self.filter_edit.text()
+        )
+        if is_search_escape:
+            self.filter_edit.clear()
+            return True
+        return super().eventFilter(obj, event)
 
     def on_run_selected(self) -> None:
         """Run the currently selected app."""
@@ -3256,89 +3233,6 @@ TRAY ICON:
             self._minimize_to_tray_with_animation()
 
 
-    def open_context_menu(self, pos) -> None:
-        """Open context menu for right-click on app items."""
-        app = self.app_grid.app_at_pos(pos)
-        if not app:
-            return
-            
-        menu = QMenu(self)
-        
-        # Apply dark context menu styling
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #2a2a2a;
-                color: #ffffff;
-                border: 1px solid #404040;
-                border-radius: 0px;
-                padding: 4px 0px;
-                font-family: 'Segoe UI', Arial, sans-serif;
-                font-size: 12px;
-            }
-            QMenu::item {
-                background-color: transparent;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 0px;
-            }
-            QMenu::item:selected {
-                background-color: #404040;
-                color: #ffffff;
-            }
-            QMenu::item:pressed {
-                background-color: #2a2a2a;
-                color: #ffffff;
-            }
-            QMenu::separator {
-                height: 1px;
-                background-color: #404040;
-                margin: 4px 8px;
-            }
-        """)
-        
-        # Check if it's a folder to show appropriate actions
-        is_folder = os.path.isdir(app.path)
-        
-        if is_folder:
-            # Folder actions
-            open_action = menu.addAction("Open Folder")
-            open_loc_action = menu.addAction("Open parent folder")
-        else:
-            # File actions
-            run_action = menu.addAction("Run")
-            run_admin_action = menu.addAction("Run as administrator")
-            open_loc_action = menu.addAction("Open location")
-        
-        rename_action = menu.addAction("Rename")
-        menu.addSeparator()
-        icon_diagnostics_action = menu.addAction("Icon Diagnostics...")
-        remove_action = menu.addAction("Unpin")
-        
-        action = menu.exec(self.mapToGlobal(pos))
-        
-        if is_folder:
-            if action == open_action:
-                self.run_path(app.path)  # This will open the folder
-            elif action == open_loc_action:
-                self.open_location(app.path)
-            elif action == rename_action:
-                self.rename_app(app)
-            elif action == icon_diagnostics_action:
-                self._show_icon_diagnostics()
-            elif action == remove_action:
-                self.remove_app(app)
-        else:
-            if action == run_action:
-                self.run_path(app.path)
-            elif action == run_admin_action:
-                self.run_path_admin(app.path)
-            elif action == open_loc_action:
-                self.open_location(app.path)
-            elif action == rename_action:
-                self.rename_app(app)
-            elif action == remove_action:
-                self.remove_app(app)
-
     def rename_app(self, app: AppItem) -> None:
         """Rename an app item."""
         new_title, ok = QInputDialog.getText(
@@ -3375,88 +3269,77 @@ TRAY ICON:
             self.app_grid.populate(self.apps)
 
     def open_location(self, path: str) -> None:
-        """Open the folder containing the selected item."""
+        """Open the folder containing the item in Explorer, with the item selected."""
         try:
-            if os.path.isdir(path):
-                # For folders, open the parent directory
-                dir_path = str(Path(path).parent)
+            normalized = os.path.normpath(path)
+            parent = os.path.dirname(normalized)
+            if parent and parent != normalized and os.path.exists(normalized):
+                # /select highlights the file or folder inside its parent folder
+                subprocess.Popen(["explorer", "/select,", normalized])
+            elif parent and os.path.isdir(parent):
+                # Item is gone but its folder still exists
+                subprocess.Popen(["explorer", parent])
             else:
-                # For files, open the directory containing the file
-                dir_path = str(Path(path).parent)
-            
-            # Only open if we have a valid parent directory (not root)
-            if dir_path and dir_path != path:
-                normalized_dir = os.path.normpath(dir_path)
-                print(f"Opening parent directory: {normalized_dir}")
-                subprocess.Popen(["explorer", normalized_dir], creationflags=subprocess.CREATE_NO_WINDOW)
-            else:
-                # If no parent directory (root drive), just open the item itself
-                normalized_path = os.path.normpath(path)
-                print(f"Opening item itself: {normalized_path}")
-                subprocess.Popen(["explorer", normalized_path], creationflags=subprocess.CREATE_NO_WINDOW)
+                # Root drive (or nothing better available): open the item itself
+                subprocess.Popen(["explorer", normalized])
         except Exception as e:
             QMessageBox.warning(self, APP_NAME, f"Failed to open location:\n{e}")
 
+    def _warn_missing(self, path: str) -> None:
+        QMessageBox.warning(
+            self,
+            "Item Not Found",
+            f"The item no longer exists at:\n{path}\n\nPlease unpin it from the launcher or update the path.",
+            QMessageBox.Ok
+        )
+
+    @staticmethod
+    def _shell_execute(path: str, verb: Optional[str] = None) -> int:
+        """Launch a file/folder through the Windows shell (same as double-clicking it).
+
+        Uses the item's own folder as the working directory. Returns the
+        ShellExecute result code (> 32 means success).
+        """
+        if sys.platform != "win32":
+            from PySide6.QtCore import QUrl
+            from PySide6.QtGui import QDesktopServices
+            return 33 if QDesktopServices.openUrl(QUrl.fromLocalFile(path)) else 0
+
+        import ctypes
+        from ctypes import wintypes
+        shell_execute = ctypes.windll.shell32.ShellExecuteW
+        shell_execute.argtypes = [wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR,
+                                  wintypes.LPCWSTR, wintypes.LPCWSTR, ctypes.c_int]
+        shell_execute.restype = ctypes.c_void_p
+        normalized = os.path.normpath(path)
+        work_dir = normalized if os.path.isdir(normalized) else os.path.dirname(normalized)
+        SW_SHOWNORMAL = 1
+        result = shell_execute(None, verb, normalized, None, work_dir or None, SW_SHOWNORMAL)
+        return int(result or 0)
+
     def run_path(self, path: str) -> None:
-        """Run a file with proper working directory or open a folder."""
+        """Run a file with its folder as the working directory, or open a folder."""
+        if not os.path.exists(path):
+            self._warn_missing(path)
+            return
         try:
-            # Check if the path exists before trying to run it
-            if not os.path.exists(path):
-                QMessageBox.warning(
-                    self, 
-                    "Item Not Found", 
-                    f"The item no longer exists at:\n{path}\n\nPlease Unpin it from the launcher or update the path.",
-                    QMessageBox.Ok
-                )
-                return
-            
-            # Debug logging
-            print(f"run_path called with: {path}")
-            print(f"Path exists: {os.path.exists(path)}")
-            print(f"Is directory: {os.path.isdir(path)}")
-            print(f"Absolute path: {os.path.abspath(path)}")
-            
-            # Check if the path is a directory
-            if os.path.isdir(path):
-                # Open folder in Explorer - normalize path to Windows format
-                normalized_path = os.path.normpath(path)
-                print(f"Normalized path: {normalized_path}")
-                print(f"Opening folder in Explorer: {normalized_path}")
-                print(f"Explorer command: explorer \"{normalized_path}\"")
-                subprocess.Popen(["explorer", normalized_path], creationflags=subprocess.CREATE_NO_WINDOW)
-            else:
-                # Run file with proper working directory
-                target_dir = str(Path(path).parent)
-                path_ps = path.replace("'", "''")
-                dir_ps = target_dir.replace("'", "''")
-                ps_cmd = [
-                    "powershell",
-                    "-NoProfile",
-                    "-WindowStyle",
-                    "Hidden",
-                    "-Command",
-                    f"Start-Process -FilePath '{path_ps}' -WorkingDirectory '{dir_ps}'"
-                ]
-                subprocess.Popen(ps_cmd, creationflags=subprocess.CREATE_NO_WINDOW)
+            code = self._shell_execute(path)
+            if code <= 32:
+                raise OSError(f"Windows could not open the item (error code {code}).")
         except Exception as e:
             print(f"Error in run_path: {e}")
-            QMessageBox.warning(self, APP_NAME, f"Failed to run:\n{e}")
+            QMessageBox.warning(self, APP_NAME, f"Failed to run:\n{path}\n\n{e}")
 
     def run_path_admin(self, path: str) -> None:
         """Run a file as administrator."""
-        ps_path = path.replace("'", "''")
-        target_dir = str(Path(path).parent)
-        ps_dir = target_dir.replace("'", "''")
-        ps_cmd = [
-            "powershell",
-            "-NoProfile",
-            "-WindowStyle",
-            "Hidden",
-            "-Command",
-            f"Start-Process -FilePath '{ps_path}' -WorkingDirectory '{ps_dir}' -Verb RunAs"
-        ]
+        if not os.path.exists(path):
+            self._warn_missing(path)
+            return
         try:
-            subprocess.Popen(ps_cmd, creationflags=subprocess.CREATE_NO_WINDOW)
+            code = self._shell_execute(path, "runas")
+            SE_ERR_ACCESSDENIED = 5  # also returned when the user cancels the UAC prompt
+            if code <= 32 and code != SE_ERR_ACCESSDENIED:
+                raise OSError(f"Windows could not open the item (error code {code}).")
         except Exception as e:
             QMessageBox.warning(self, APP_NAME, f"Failed to run as admin:\n{e}")
 
@@ -3468,12 +3351,12 @@ class LauncherApp:
         self.app = QApplication.instance() or QApplication(sys.argv)
         
         # Set application icon globally (affects taskbar)
-        app_icon = QIcon("template_app/assets/icons/icon2.png")
+        app_icon = QIcon(APP_ICON_PATH)
         if not app_icon.isNull():
             self.app.setWindowIcon(app_icon)
             print(f"Application icon set successfully: {app_icon.availableSizes()}")
         else:
-            print("Failed to load application icon from template_app/assets/icons/icon2.png")
+            print(f"Failed to load application icon from {APP_ICON_PATH}")
         
         self.window = LauncherWindow()
         
@@ -3492,7 +3375,7 @@ class LauncherApp:
         self.tray = QSystemTrayIcon(self.window)
         
         # Set tray icon (use the same icon as the application)
-        app_icon = QIcon("template_app/assets/icons/icon2.png")
+        app_icon = QIcon(APP_ICON_PATH)
         if not app_icon.isNull():
             self.tray.setIcon(app_icon)
         else:
